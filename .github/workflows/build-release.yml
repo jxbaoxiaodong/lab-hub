@@ -19,8 +19,7 @@ jobs:
             artifact: LabClient-Windows
           - os: ubuntu-latest
             artifact: LabClient-Linux
-          - os: macos-latest
-            artifact: LabClient-macOS
+          # macOS 构建暂时跳过
 
     steps:
       - name: Checkout code
@@ -54,12 +53,6 @@ jobs:
           cd client
           pyinstaller --name="LabClient" --onefile --console --add-data="static:static" --clean app.py
 
-      - name: Build with PyInstaller (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          cd client
-          pyinstaller --name="LabClient" --onefile --console --add-data="static:static" --clean app.py
-
       - name: Create package (Windows)
         if: runner.os == 'Windows'
         run: |
@@ -71,12 +64,6 @@ jobs:
         run: |
           mkdir -p release
           cp dist/LabClient release/lab-linux
-
-      - name: Create package (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          mkdir -p release
-          cp dist/LabClient release/lab-macos
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -102,17 +89,10 @@ jobs:
           name: LabClient-Linux
           path: release-linux
 
-      - name: Download macOS artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: LabClient-macOS
-          path: release-macos
-
       - name: List files
         run: |
           echo "=== Windows ===" && ls -la release-windows/
           echo "=== Linux ===" && ls -la release-linux/
-          echo "=== macOS ===" && ls -la release-macos/
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -120,4 +100,3 @@ jobs:
           files: |
             release-windows/lab-windows.exe
             release-linux/lab-linux
-            release-macos/lab-macos
