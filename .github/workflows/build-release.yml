@@ -19,7 +19,8 @@ jobs:
             artifact: LabClient-Windows
           - os: ubuntu-latest
             artifact: LabClient-Linux
-          # macOS 构建暂时跳过
+          - os: macos-latest
+            artifact: LabClient-macOS
 
     steps:
       - name: Checkout code
@@ -44,14 +45,12 @@ jobs:
       - name: Build with PyInstaller (Windows)
         if: runner.os == 'Windows'
         run: |
-          cd client
-          pyinstaller lab_client.spec --clean
+          pyinstaller --name="LabClient" --onefile --console --add-data="static;static" --hidden-import=flask --hidden-import=flask_cors --hidden-import=waitress --hidden-import=pdfplumber --hidden-import=PIL --hidden-import=PIL.Image --hidden-import=playwright --hidden-import=playwright.sync_api --hidden-import=bs4 --hidden-import=lxml --exclude-module=matplotlib --exclude-module=numpy --exclude-module=pandas --exclude-module=scipy --exclude-module=tkinter --clean app.py
 
-      - name: Build with PyInstaller (Linux)
-        if: runner.os == 'Linux'
+      - name: Build with PyInstaller (Linux/macOS)
+        if: runner.os != 'Windows'
         run: |
-          cd client
-          pyinstaller lab_client.spec --clean
+          pyinstaller --name="LabClient" --onefile --console --add-data="static:static" --hidden-import=flask --hidden-import=flask_cors --hidden-import=waitress --hidden-import=pdfplumber --hidden-import=PIL --hidden-import=PIL.Image --hidden-import=playwright --hidden-import=playwright.sync_api --hidden-import=bs4 --hidden-import=lxml --exclude-module=matplotlib --exclude-module=numpy --exclude-module=pandas --exclude-module=scipy --exclude-module=tkinter --clean app.py
 
       - name: Create package (Windows)
         if: runner.os == 'Windows'
@@ -64,6 +63,12 @@ jobs:
         run: |
           mkdir -p release
           cp dist/LabClient release/lab-linux
+
+      - name: Create package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p release
+          cp dist/LabClient release/lab-macos
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -89,10 +94,17 @@ jobs:
           name: LabClient-Linux
           path: release-linux
 
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: LabClient-macOS
+          path: release-macos
+
       - name: List files
         run: |
           echo "=== Windows ===" && ls -la release-windows/
           echo "=== Linux ===" && ls -la release-linux/
+          echo "=== macOS ===" && ls -la release-macos/
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -100,3 +112,4 @@ jobs:
           files: |
             release-windows/lab-windows.exe
             release-linux/lab-linux
+            release-macos/lab-macos
