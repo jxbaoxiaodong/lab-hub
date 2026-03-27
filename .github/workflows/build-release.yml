@@ -45,13 +45,13 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           cd client
-          pyinstaller --name="LabClient" --onefile --console --add-data="static;static" --clean app.py
+          pyinstaller lab_client.spec --clean
 
       - name: Build with PyInstaller (Linux)
         if: runner.os == 'Linux'
         run: |
           cd client
-          pyinstaller --name="LabClient" --onefile --console --add-data="static:static" --clean app.py
+          pyinstaller lab_client.spec --clean
 
       - name: Create package (Windows)
         if: runner.os == 'Windows'
