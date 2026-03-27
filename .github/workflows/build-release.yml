@@ -45,17 +45,20 @@ jobs:
       - name: Build with PyInstaller (Windows)
         if: runner.os == 'Windows'
         run: |
-          pyinstaller --name="LabClient" --onefile --console --add-data="client/static;static" --clean --noconfirm client/app.py
+          cd client
+          pyinstaller --name="LabClient" --onefile --console --add-data="static;static" --clean app.py
 
       - name: Build with PyInstaller (Linux)
         if: runner.os == 'Linux'
         run: |
-          pyinstaller --name="LabClient" --onefile --console --add-data="client/static:static" --clean --noconfirm client/app.py
+          cd client
+          pyinstaller --name="LabClient" --onefile --console --add-data="static:static" --clean app.py
 
       - name: Build with PyInstaller (macOS)
         if: runner.os == 'macOS'
         run: |
-          pyinstaller --name="LabClient" --onefile --console --add-data="client/static:static" --clean --noconfirm client/app.py
+          cd client
+          pyinstaller --name="LabClient" --onefile --console --add-data="static:static" --clean app.py
 
       - name: Create package (Windows)
         if: runner.os == 'Windows'
