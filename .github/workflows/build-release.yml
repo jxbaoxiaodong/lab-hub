@@ -35,7 +35,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
-          pip install flask flask-cors waitress pdfplumber requests playwright beautifulsoup4 lxml python-docx PyMuPDF Pillow
+          pip install flask flask-cors waitress pdfplumber requests playwright beautifulsoup4 lxml python-docx PyMuPDF Pillow selenium webdriver-manager openpyxl xlrd rapidocr-onnxruntime
 
       - name: Install Playwright browsers
         run: |
@@ -44,31 +44,36 @@ jobs:
 
       - name: Build with PyInstaller (Windows)
         if: runner.os == 'Windows'
+        working-directory: ./client
         run: |
-          pyinstaller --name="LabClient" --onefile --console --add-data="static;static" --hidden-import=flask --hidden-import=flask_cors --hidden-import=waitress --hidden-import=pdfplumber --hidden-import=PIL --hidden-import=PIL.Image --hidden-import=playwright --hidden-import=playwright.sync_api --hidden-import=bs4 --hidden-import=lxml --exclude-module=matplotlib --exclude-module=numpy --exclude-module=pandas --exclude-module=scipy --exclude-module=tkinter --clean app.py
+          pyinstaller --clean lab_client.spec
 
       - name: Build with PyInstaller (Linux/macOS)
         if: runner.os != 'Windows'
+        working-directory: ./client
         run: |
-          pyinstaller --name="LabClient" --onefile --console --add-data="static:static" --hidden-import=flask --hidden-import=flask_cors --hidden-import=waitress --hidden-import=pdfplumber --hidden-import=PIL --hidden-import=PIL.Image --hidden-import=playwright --hidden-import=playwright.sync_api --hidden-import=bs4 --hidden-import=lxml --exclude-module=matplotlib --exclude-module=numpy --exclude-module=pandas --exclude-module=scipy --exclude-module=tkinter --clean app.py
+          pyinstaller --clean lab_client.spec
 
       - name: Create package (Windows)
         if: runner.os == 'Windows'
+        working-directory: ./client
         run: |
-          mkdir release
-          copy dist\LabClient.exe release\lab-windows.exe
+          mkdir ..\release
+          copy dist\lab-client.exe ..\release\lab-windows.exe
 
       - name: Create package (Linux)
         if: runner.os == 'Linux'
+        working-directory: ./client
         run: |
-          mkdir -p release
-          cp dist/LabClient release/lab-linux
+          mkdir -p ../release
+          cp dist/lab-client ../release/lab-linux
 
       - name: Create package (macOS)
         if: runner.os == 'macOS'
+        working-directory: ./client
         run: |
-          mkdir -p release
-          cp dist/LabClient release/lab-macos
+          mkdir -p ../release
+          cp dist/lab-client ../release/lab-macos
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
