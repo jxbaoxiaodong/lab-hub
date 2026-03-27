@@ -1,0 +1,102 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: LabClient-Windows
+          - os: ubuntu-latest
+            artifact: LabClient-Linux
+          # macOS 构建暂时跳过
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install flask flask-cors waitress pdfplumber requests playwright beautifulsoup4 lxml python-docx PyMuPDF Pillow
+
+      - name: Install Playwright browsers
+        run: |
+          pip install playwright
+          playwright install chromium --with-deps
+
+      - name: Build with PyInstaller (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd client
+          pyinstaller lab_client.spec --clean
+
+      - name: Build with PyInstaller (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cd client
+          pyinstaller lab_client.spec --clean
+
+      - name: Create package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir release
+          copy dist\LabClient.exe release\lab-windows.exe
+
+      - name: Create package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p release
+          cp dist/LabClient release/lab-linux
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: release/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: LabClient-Windows
+          path: release-windows
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: LabClient-Linux
+          path: release-linux
+
+      - name: List files
+        run: |
+          echo "=== Windows ===" && ls -la release-windows/
+          echo "=== Linux ===" && ls -la release-linux/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release-windows/lab-windows.exe
+            release-linux/lab-linux
