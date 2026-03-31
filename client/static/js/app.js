@@ -2604,6 +2604,7 @@ function checkUpgradeResponse(data) {
 function showUpgradeModal(message) {
     // 如果已经存在弹窗，不再重复显示
     if (document.getElementById('upgradeModal')) return;
+    const safeMessage = escapeHtml(message || '您的客户端版本过低，需要升级后才能继续使用。');
     
     const modal = document.createElement('div');
     modal.id = 'upgradeModal';
@@ -2618,7 +2619,7 @@ function showUpgradeModal(message) {
             <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
             <h3 style="margin-bottom: 1rem; color: var(--warning);">需要升级</h3>
             <p style="margin-bottom: 1.5rem; color: var(--text-secondary); line-height: 1.6;">
-                ${message || '您的客户端版本过低，需要升级后才能继续使用。'}
+                ${safeMessage}
             </p>
             <p style="margin-bottom: 1.5rem; font-size: 0.875rem; color: var(--text-secondary);">
                 请重启客户端或联系管理员获取最新版本。
@@ -2688,13 +2689,17 @@ function showError(type, message) {
             '3. 如果问题持续，联系管理员'
         ];
     }
+
+    const safeErrorTitle = escapeHtml(errorTitle);
+    const safeErrorDetails = escapeHtml(errorDetails);
+    const safeMessage = escapeHtml(message || '');
     
     let suggestionsHtml = '';
     if (suggestions.length > 0) {
         suggestionsHtml = `
             <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid rgba(239, 68, 68, 0.2);">
                 <div style="font-weight: 600; margin-bottom: 0.5rem; color: #dc2626;">解决建议：</div>
-                ${suggestions.map(s => `<div style="margin: 0.25rem 0; padding-left: 0.5rem; border-left: 2px solid #fecaca;">${s}</div>`).join('')}
+                ${suggestions.map(s => `<div style="margin: 0.25rem 0; padding-left: 0.5rem; border-left: 2px solid #fecaca;">${escapeHtml(s)}</div>`).join('')}
             </div>
         `;
     }
@@ -2703,10 +2708,10 @@ function showError(type, message) {
         <div style="padding: 1rem; background: rgba(239, 68, 68, 0.08); border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3);">
             <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
                 <span style="font-size: 1.25rem; margin-right: 0.5rem;">✗</span>
-                <span style="font-weight: 700; color: #dc2626; font-size: 1rem;">${errorTitle}</span>
+                <span style="font-weight: 700; color: #dc2626; font-size: 1rem;">${safeErrorTitle}</span>
             </div>
-            <div style="color: #991b1b; margin-bottom: 0.5rem; font-size: 0.9rem;">${errorDetails}</div>
-            ${message !== errorDetails ? `<div style="font-size: 0.8rem; color: #7f1d1d; background: rgba(239, 68, 68, 0.1); padding: 0.5rem; border-radius: 4px; font-family: monospace; margin-bottom: 0.5rem;">详细信息: ${message}</div>` : ''}
+            <div style="color: #991b1b; margin-bottom: 0.5rem; font-size: 0.9rem;">${safeErrorDetails}</div>
+            ${message !== errorDetails ? `<div style="font-size: 0.8rem; color: #7f1d1d; background: rgba(239, 68, 68, 0.1); padding: 0.5rem; border-radius: 4px; font-family: monospace; margin-bottom: 0.5rem;">详细信息: ${safeMessage}</div>` : ''}
             ${suggestionsHtml}
         </div>
     `;

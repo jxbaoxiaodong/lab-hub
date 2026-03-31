@@ -99,6 +99,8 @@ TECH_TASKS_ROOT.mkdir(exist_ok=True)
 # 配置
 # 客户端必须使用公网 Hub（用于分发），禁止切换到本地地址。
 HUB_URL = "https://testmumu.ftir.fun"
+CLIENT_APP_VERSION = "2.2.0"
+CLIENT_USER_AGENT = f"Jingxi Client/{CLIENT_APP_VERSION}"
 CLIENT_ID_FILE = CACHE_DIR / "client_id.txt"
 CLIENT_AUTH_TOKEN_FILE = CACHE_DIR / "auth_token.txt"
 CLIENT_AUTH_HEADER_PREFIX = "X-Jingxi-"
@@ -633,7 +635,7 @@ def hub_request(method, path, data=None):
             body_bytes = body_text.encode("utf-8")
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "Jingxi Client/1.0",
+            "User-Agent": CLIENT_USER_AGENT,
         }
         headers.update(
             _build_client_auth_headers(
@@ -676,7 +678,7 @@ def hub_request(method, path, data=None):
                 "-H",
                 "Content-Type: application/json",
                 "-H",
-                "User-Agent: Jingxi Client/1.0",
+                f"User-Agent: {CLIENT_USER_AGENT}",
             ]
             auth_headers = _build_client_auth_headers(
                 method,
@@ -945,6 +947,7 @@ def bootstrap_local_api():
             "success": True,
             "data": {
                 "local_api_token": LOCAL_API_BOOTSTRAP_TOKEN,
+                "version": CLIENT_APP_VERSION,
             },
         }
     )
@@ -975,6 +978,7 @@ def get_status():
             "success": True,
             "data": {
                 "client_id": CLIENT_ID,
+                "version": CLIENT_APP_VERSION,
                 "hub_url": HUB_URL,
                 "hub_state": hub_state,
                 "service_ready": ready,
@@ -1171,7 +1175,7 @@ def download_tech_task_file(task_id, filename):
         req = urllib.request.Request(
             url,
             headers={
-                "User-Agent": "Jingxi Client/1.0",
+                "User-Agent": CLIENT_USER_AGENT,
                 **_build_client_auth_headers(
                     "GET", f"/api/tech-tasks/{safe_task_id}/download?{query}", b""
                 ),
@@ -2885,7 +2889,7 @@ def start_bootstrap():
                 register_payload = {
                     "client_id": CLIENT_ID,
                     "hostname": CLIENT_FINGERPRINT.get("hostname", "unknown"),
-                    "version": "1.0.0",
+                    "version": CLIENT_APP_VERSION,
                     "mac": CLIENT_MAC,
                     "fingerprint": CLIENT_FINGERPRINT,
                 }

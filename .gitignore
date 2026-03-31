@@ -38,6 +38,7 @@ client_id.txt
 config.enc
 client/bootstrap_secret.txt
 backend/data/client_bootstrap_secret.txt
+client/question_banks/
 
 # 客户端仓库不应上传的目录/文件
 /AGENTS.md

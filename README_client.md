@@ -1,8 +1,10 @@
-# Lab 客户端仓库
+# Lab 客户端仓库 v2.2.0
 
 > **注意**：这是客户端仓库，包含客户端代码。用户只需运行客户端即可使用系统，无需服务端代码。
 
 > 服务端代码由管理员部署，用户无需关注。
+
+> 构建时所需的 `bootstrap_secret.txt` 由 `./release.sh` 和 GitHub Actions secret `LAB_CLIENT_AUTH_SECRET` 自动注入，不会提交到仓库。
 
 ---
 

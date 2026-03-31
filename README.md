@@ -1,8 +1,8 @@
-# Lab 分布式检测工具箱 v2.0.0
+# Lab 分布式检测工具箱 v2.2.0
 
 > 专为检测计量行业设计的分布式标准查询与下载系统
 
-[![版本](https://img.shields.io/badge/version-2.0.0-blue.svg)]()
+[![版本](https://img.shields.io/badge/version-2.2.0-blue.svg)]()
 [![Python](https://img.shields.io/badge/python-3.8+-green.svg)](https://www.python.org/)
 [![平台](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 
@@ -92,7 +92,7 @@ python app.py
 
 ```bash
 cd /home/bob/projects/lab
-./release.sh v2.1.2 "release: v2.1.2"
+./release.sh v2.2.0 "release: v2.2.0"
 ```
 
 这一个脚本会串起完整发布链路：
@@ -104,7 +104,9 @@ cd /home/bob/projects/lab
 5. 等待 GitHub Release 生成后，把 `lab-windows.exe`、`lab-linux`、`lab-macos` 下载到 `landing_page/download/`
 6. 同步代码和 tag 到 Gitee，并更新 Gitee Release 附件
 
-不再保留其他发布脚本，所有发布、查状态、补下载、补 Gitee、同步 secret 都统一通过 `./release.sh` 完成。
+额外的上传收口：
+- 发布脚本和 GitHub Actions 会拒绝把 `client/bootstrap_secret.txt`、`client/cache/`、`client/downloads/`、`client/question_banks/`、`client/__pycache__/` 等本地运行产物带进客户端仓库。
+- 不再保留其他发布脚本，所有发布、查状态、补下载、补 Gitee、同步 secret 都统一通过 `./release.sh` 完成。
 
 ---
 
@@ -354,6 +356,14 @@ A: 不可以。本系统设计为必须持续联网，原因：
 ---
 
 ## 📝 更新日志
+
+### v2.2.0 (2026-03-31)
+- ✅ **管理后台来源 IP 加固**：本机限制改为结合 `CF-Connecting-IP` / `X-Real-IP` / `X-Forwarded-For` 判断真实来源，避免在 tunnel / 反向代理下误放行管理接口
+- ✅ **客户端鉴权升级**：注册阶段使用 bootstrap secret 换取客户端专属 token，后续请求默认走服务端下发 token，不再依赖所有客户端共享同一个长期对称密钥
+- ✅ **TLS 校验恢复默认安全**：客户端与 Hub、驱动/浏览器下载链路默认启用证书校验，仅保留显式调试开关
+- ✅ **本地客户端 API 收紧**：本地接口增加随机 token、Origin/Referer 校验，阻断恶意网页直接跨站驱动本机客户端
+- ✅ **管理后台 XSS 修复**：客户端列表、消息列表、技术任务区的客户端可控字段统一转义，下载链接限制为站内相对地址
+- ✅ **发布链路加固**：`release.sh` 与 GitHub Actions 新增 `client/` 白名单校验，防止把 `bootstrap_secret.txt`、缓存、下载目录等误传到 GitHub 客户端仓库
 
 ### v2.1.0 (2026-03-26)
 - ✅ **全新加密配置机制**：配置本地是乱码，需密钥解密

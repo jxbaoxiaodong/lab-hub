@@ -29,6 +29,7 @@ jobs:
       - name: Verify repository layout
         shell: bash
         run: |
+          client_allowlist_regex='^client/(app\.py|downloader\.py|extractor\.py|lab_client\.spec|query_service\.py|requirements\.txt|standard_auto_downloader_core\.py|start\.bat|static/.+)$'
           required_files=(
             client/app.py
             client/downloader.py
@@ -47,10 +48,17 @@ jobs:
             fi
           done
 
-          blocked_files="$(git ls-files | grep -E '^(\.env\.example|AGENTS\.md|WINDOWS_REQUIREMENTS\.md|backend/|docs/|tools/|drivers/|landing_page/|cloudflared_lab\.yml|landing_tunnel\.yml|chrome-binaries-tunnel\.yml|backup\.py|backup\.sh|build_local\.sh|check_build_status\.sh|CHROME_MIRROR_DEPLOY\.md|DEPLOY_MANUAL\.md|DNS_SETUP\.md|GITEE_UPLOAD_INSTRUCTIONS\.md|TEST_REPORT\.md|create_gitee_release\.sh|debug_selenium\.py|deploy-chrome\.sh|download_build\.sh|release\.sh|setup_windows\.bat|start\.bat|start\.sh|start_landing\.sh|test_.*\.py|.*\.png|.*\.exe)$' || true)"
+          blocked_files="$(git ls-files | grep -E '^(\.env\.example|AGENTS\.md|WINDOWS_REQUIREMENTS\.md|backend/|docs/|tools/|drivers/|landing_page/|cloudflared_lab\.yml|landing_tunnel\.yml|chrome-binaries-tunnel\.yml|backup\.py|backup\.sh|build_local\.sh|check_build_status\.sh|CHROME_MIRROR_DEPLOY\.md|DEPLOY_MANUAL\.md|DNS_SETUP\.md|GITEE_UPLOAD_INSTRUCTIONS\.md|TEST_REPORT\.md|create_gitee_release\.sh|debug_selenium\.py|deploy-chrome\.sh|download_build\.sh|release\.sh|setup_windows\.bat|start\.bat|start\.sh|start_landing\.sh|test_.*\.py|.*\.png|.*\.exe|client/bootstrap_secret\.txt|client/cache/|client/downloads/|client/__pycache__/|client/question_banks/|client/build/|client/dist/|client/lab_client\.spec\.playwright_backup|client/playwright_runtime_hook\.py)$' || true)"
           if [ -n "$blocked_files" ]; then
             echo "Repository contains files that should not be uploaded to the client repo:" >&2
             echo "$blocked_files" >&2
+            exit 1
+          fi
+
+          unexpected_client_files="$(git ls-files client | grep -Ev "$client_allowlist_regex" || true)"
+          if [ -n "$unexpected_client_files" ]; then
+            echo "client/ contains tracked files outside the allowed release whitelist:" >&2
+            echo "$unexpected_client_files" >&2
             exit 1
           fi
 
