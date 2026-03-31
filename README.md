@@ -30,8 +30,8 @@
 - 显示发布/实施日期
 
 ### ⬇️ 自动下载
-- 多源自动切换（国家标准全文公开系统、GBT标准网等）
-- 下载失败自动切换源重试
+- 下载源已收口为 2 个：**食品伙伴网** + **国家标准全文公开系统**
+- 规则：优先食品伙伴网；仅当食品伙伴网无结果且属于国标（GB/GB-T）时，才查询国家标准平台；其他标准直接无结果
 - 在线预览链接返回
 
 ### 👮 实时封禁控制
@@ -86,6 +86,28 @@ python app.py
 
 ---
 
+## 📦 发布与打包
+
+项目现在只保留一个正式发布入口：
+
+```bash
+cd /home/bob/projects/lab
+./release.sh v2.1.2 "release: v2.1.2"
+```
+
+这一个脚本会串起完整发布链路：
+
+1. 同步本地 `backend/data/client_bootstrap_secret.txt` 和 `client/bootstrap_secret.txt`
+2. 同步 GitHub Actions secret `LAB_CLIENT_AUTH_SECRET`
+3. 只提交允许进入客户端仓库的文件：`.github/`、`.gitignore`、`README.md`、`README_client.md`、`client/`
+4. 推送到 GitHub，触发 Actions 打包 `Windows / Linux / macOS`
+5. 等待 GitHub Release 生成后，把 `lab-windows.exe`、`lab-linux`、`lab-macos` 下载到 `landing_page/download/`
+6. 同步代码和 tag 到 Gitee，并更新 Gitee Release 附件
+
+不再保留其他发布脚本，所有发布、查状态、补下载、补 Gitee、同步 secret 都统一通过 `./release.sh` 完成。
+
+---
+
 ## 📖 使用说明
 
 ### 服务端管理后台
@@ -105,7 +127,7 @@ python app.py
 **功能模块：**
 - 📄 **智能提取** - 上传文件自动提取标准号
 - 🔍 **批量查询** - 多平台自动轮询查询标准信息
-- ⬇️ **标准下载** - 多源自动下载标准文档
+- ⬇️ **标准下载** - 双源下载（食品伙伴网优先，国标兜底国家标准平台在线阅读）
 - 💬 **联系作者** - 与管理员实时沟通
 
 ---
@@ -146,7 +168,7 @@ python server_hub.py
 # 6. 配置公网访问（推荐Cloudflare Tunnel）
 # 安装 cloudflared
 # 创建 tunnel 配置文件 cloudflared_lab.yml
-# 启动: cloudflared tunnel --config cloudflared_lab.yml run
+# 启动: 使用 systemd user service `cloudflared-testmumu.service`（避免重复启动）
 ```
 
 ### 客户端详细部署

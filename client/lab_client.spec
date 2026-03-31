@@ -5,17 +5,21 @@ import sys
 from pathlib import Path
 
 block_cipher = None
+datas = [
+    ('static', 'static'),
+]
+
+if os.path.exists('bootstrap_secret.txt'):
+    datas.append(('bootstrap_secret.txt', '.'))
 
 a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
-    datas=[
-        ('static', 'static'),  # 包含静态文件
-    ],
+    datas=datas,
     hiddenimports=[
+        'standard_auto_downloader_core',
         'flask',
-        'flask_cors',
         'waitress',
         'pdfplumber',
         'pdfminer',
@@ -26,12 +30,9 @@ a = Analysis(
         'selenium.webdriver.chrome.service',
         'selenium.webdriver.chrome.options',
         'selenium.webdriver.common.by',
+        'selenium.webdriver.common.keys',
         'selenium.webdriver.support.ui',
         'selenium.webdriver.support.expected_conditions',
-        'webdriver_manager',
-        'webdriver_manager.chrome',
-        'webdriver_manager.core',
-        'webdriver_manager.core.os_manager',
         'bs4',
         'lxml',
         'lxml.etree',
@@ -80,6 +81,8 @@ a = Analysis(
         'socket',
         'uuid',
         'ssl',
+        'cryptography',
+        'cryptography.hazmat.primitives.ciphers.aead',
     ],
     hookspath=[],
     hooksconfig={},

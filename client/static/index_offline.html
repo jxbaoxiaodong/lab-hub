@@ -42,7 +42,11 @@
                     </a>
                     <a href="#" class="nav-item" data-section="download" onclick="showSection('download')">
                         <span class="nav-icon">⬇️</span>
-                        <span class="nav-text">找标准电子版</span>
+                        <span class="nav-text">找技术文件</span>
+                    </a>
+                    <a href="#" class="nav-item" data-section="questionbank" onclick="showSection('questionbank')">
+                        <span class="nav-icon">📝</span>
+                        <span class="nav-text">在线题库</span>
                     </a>
                     <a href="#" class="nav-item" data-section="developing" onclick="showSection('developing')">
                         <span class="nav-icon">🚧</span>
@@ -59,6 +63,7 @@
 
             <!-- 右侧内容区 -->
             <div class="content">
+
                 <!-- 标准号提取 -->
                 <div id="section-extract" class="section">
             <div class="card">
@@ -70,6 +75,13 @@
                     </div>
                 </div>
                 <div class="card-body">
+                    <div style="margin-bottom: 0.8rem; padding: 0.7rem 0.9rem; border: 1px solid rgba(34, 197, 94, 0.22); border-radius: 10px; background: rgba(34, 197, 94, 0.08);">
+                        <div style="font-weight: 600; font-size: 0.9rem;">核心优势</div>
+                        <div style="margin-top: 0.25rem; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.55;">
+                            支持扫描件 OCR（如 CMA 证书），可自动提取标准号并标注来源页码/位置，方便后续复核。
+                        </div>
+                    </div>
+
                     <div class="file-upload" id="dropZone">
                         <input type="file" id="extractFile" accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.jpeg,.jpg,.png">
                         <div class="file-upload-icon">📎</div>
@@ -118,6 +130,13 @@
                     </div>
                 </div>
                 <div class="card-body">
+                    <div style="margin-bottom: 0.8rem; padding: 0.7rem 0.9rem; border: 1px solid rgba(59, 130, 246, 0.22); border-radius: 10px; background: rgba(59, 130, 246, 0.08);">
+                        <div style="font-weight: 600; font-size: 0.9rem;">核心优势</div>
+                        <div style="margin-top: 0.25rem; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.55;">
+                            支持批量自动查询；可勾选“包含引用标准”，先查询当前标准，再汇总引用标准进行第二轮查询。
+                        </div>
+                    </div>
+
                     <!-- 切换方式 -->
                     <div class="toggle-group">
                         <button class="toggle-btn" id="btnFileMode" onclick="setQueryMode('file')">📁 上传文件</button>
@@ -141,9 +160,21 @@
                     <button class="btn" id="queryBtn" onclick="startQuery()">开始查询</button>
                     <button class="btn btn-danger" id="queryCancelBtn" onclick="cancelTask('query')" style="display:none;">终止任务</button>
 
+                    <div style="margin-top: 0.75rem; padding: 0.75rem 0.9rem; border: 1px solid rgba(245, 158, 11, 0.18); border-radius: 10px; background: rgba(245, 158, 11, 0.06);">
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.92rem; color: var(--text-primary);">
+                            <input type="checkbox" id="queryIncludeReferences" style="accent-color: #f59e0b;">
+                            <span>包含引用标准有效性查询</span>
+                        </label>
+                        <div style="margin-top: 0.35rem; font-size: 0.75rem; color: var(--text-secondary); line-height: 1.5;">
+                            先完成当前标准查询，再汇总引用标准；确认后自动开启下一轮查询。
+                        </div>
+                    </div>
+
                     <div class="progress-container" id="queryProgress">
                         <div class="progress-detail" id="queryDetail" style="margin-top: 0;">正在处理中，请稍候...</div>
                     </div>
+
+                    <div id="queryReferenceSummary" style="display: none; margin-top: 0.75rem;"></div>
 
                     <div class="result-list" id="queryResult"></div>
 
@@ -155,45 +186,96 @@
             </div>
                 </div>
 
-                <!-- 找标准电子版 -->
+                <!-- 找技术文件 -->
                 <div id="section-download" class="section" style="display: none;">
             <div class="card">
-                <div class="card-header">
+                    <div class="card-header">
                     <div class="card-icon" style="background: rgba(16, 185, 129, 0.1);">⬇️</div>
                     <div>
-                        <div class="card-title">找标准电子版</div>
-                        <div class="card-subtitle">从多个源查找文件下载或全文阅读功能</div>
+                        <div class="card-title">找技术文件</div>
+                        <div class="card-subtitle">可以找标准、规程的电子版，也可以找其他技术文件的电子版。</div>
                     </div>
                 </div>
                  <div class="card-body">
+                    <div style="margin-bottom: 0.8rem; padding: 0.7rem 0.9rem; border: 1px solid rgba(16, 185, 129, 0.22); border-radius: 10px; background: rgba(16, 185, 129, 0.08);">
+                        <div style="font-weight: 600; font-size: 0.9rem;">核心优势</div>
+                        <div style="margin-top: 0.25rem; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.55;">
+                            采用“网站查询 + 后台序列处理”兜底，尽量确保技术文件可下载或获得全文浏览入口；查不到可一键求助后台。
+                        </div>
+                    </div>
 
-                    <!-- 切换方式 -->
+                    <!-- 子标签 -->
                     <div class="toggle-group">
-                        <button class="toggle-btn" id="btnDownloadFileMode" onclick="setDownloadMode('file')">📁 上传CSV</button>
-                        <button class="toggle-btn active" id="btnDownloadTextMode" onclick="setDownloadMode('text')">⌨️ 手动输入</button>
+                        <button class="toggle-btn active" id="btnDownloadStandardTab" onclick="setDownloadSubTab('standard')">📘 找标准</button>
+                        <button class="toggle-btn" id="btnDownloadTechTab" onclick="setDownloadSubTab('tech')">📁 找其他技术文件</button>
                     </div>
 
-                    <!-- 文件上传区域 -->
-                    <div class="form-group" id="downloadFileZone" style="display: none;">
-                        <label class="form-label">上传CSV文件</label>
-                        <input type="file" id="downloadFile" accept=".csv">
-                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">仅支持标准号提取模块导出的CSV文件</div>
+                    <!-- 找标准 -->
+                    <div id="downloadStandardPanel">
+                        <div class="form-group">
+                            <label class="form-label">标准号列表</label>
+                            <textarea id="downloadInput" placeholder="每行输入一个标准编号&#10;支持批量下载&#10;（请勿输入标准名称）"></textarea>
+                        </div>
+                        <div style="display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center;">
+                            <button class="btn btn-success" id="downloadBtn" onclick="startDownload()">开始下载</button>
+                            <button class="btn btn-danger" id="downloadCancelBtn" onclick="cancelTask('download')" style="display:none;">终止任务</button>
+                        </div>
+                        <div class="progress-container" id="downloadProgress">
+                            <div class="progress-detail" id="downloadDetail" style="margin-top: 0;">正在处理中，请稍候...</div>
+                        </div>
+                        <div class="result-list" id="downloadResult"></div>
                     </div>
 
-                    <!-- 手动输入区域 -->
-                    <div class="form-group" id="downloadTextZone">
-                        <label class="form-label">标准号列表</label>
-                        <textarea id="downloadInput" placeholder="每行输入一个标准编号&#10;支持批量下载&#10;（请勿输入标准名称）"></textarea>
+                    <!-- 找其他技术文件 -->
+                    <div id="downloadTechPanel" style="display: none;">
+                        <div class="form-group">
+                            <label class="form-label">技术文件关键词（每行一条）</label>
+                            <textarea id="techFileInput" placeholder="输入需要查找的技术文件关键词&#10;例如：检验作业指导书、设备操作规程、体系技术文件"></textarea>
+                            <div style="margin-top: 0.4rem; font-size: 0.8rem; color: var(--text-secondary);">
+                                会先尝试提取标准号；若检测到标准号，会提示去“找标准”检索；否则直接创建后台处理任务。
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center;">
+                            <button class="btn btn-primary" id="techFileCreateBtn" onclick="createTechFileTasks()">提交后台处理</button>
+                        </div>
+
+                        <div style="margin-top: 0.9rem;">
+                            <div onclick="toggleTechTaskList()" style="display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; margin-bottom: 0.45rem;">
+                                <div style="font-size: 0.92rem; font-weight: 600;">任务列表</div>
+                                <span id="techTaskListArrow" style="font-size: 0.85rem; color: var(--text-secondary);">▼</span>
+                            </div>
+                            <div id="techTaskListWrap" style="display:none;">
+                                <div class="result-list" id="techFileTaskList"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            </div>
+
+            <!-- 在线题库 -->
+            <div id="section-questionbank" class="section" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon" style="background: rgba(59, 130, 246, 0.1);">📝</div>
+                    <div>
+                        <div class="card-title">在线题库</div>
+                        <div class="card-subtitle">从本机题库目录加载，支持查看与做题</div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">选择题库</label>
+                        <select id="questionBankSelect" data-smart-dropdown="1" size="1" style="width: 100%; padding: 0.65rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary);"></select>
+                        <div id="questionBankMeta" style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);"></div>
                     </div>
 
-                    <button class="btn btn-success" id="downloadBtn" onclick="startDownload()">开始下载</button>
-                    <button class="btn btn-danger" id="downloadCancelBtn" onclick="cancelTask('download')" style="display:none;">终止任务</button>
-
-                    <div class="progress-container" id="downloadProgress">
-                        <div class="progress-detail" id="downloadDetail" style="margin-top: 0;">正在处理中，请稍候...</div>
+                    <div class="toggle-group" style="margin-top: 0.5rem;">
+                        <button class="toggle-btn active" id="btnQBViewMode" onclick="setQuestionBankMode('view')">📚 查看</button>
+                        <button class="toggle-btn" id="btnQBQuizMode" onclick="setQuestionBankMode('quiz')">🎯 做题</button>
                     </div>
 
-                    <div class="result-list" id="downloadResult"></div>
+                    <div id="questionBankContainer" style="margin-top: 1rem;"></div>
                 </div>
             </div>
             </div>
@@ -236,13 +318,6 @@
                             <div class="feature-item">
                                 <div class="feature-number">4</div>
                                 <div>
-                                    <div class="feature-title">CMA CNAS评审员题库及智能问答系统</div>
-                                    <div class="feature-desc">评审员考试题库与智能问答辅助系统</div>
-                                </div>
-                            </div>
-                            <div class="feature-item">
-                                <div class="feature-number">5</div>
-                                <div>
                                     <div class="feature-title">不确定度评估系统</div>
                                     <div class="feature-desc">测量不确定度自动评估与报告生成</div>
                                 </div>
@@ -271,7 +346,7 @@
                 <span class="footer-value" id="homeUrl">labmumu.ftir.fun</span>
             </div>
             <div class="footer-item">
-                <span class="status-dot"></span>
+                <span class="status-dot" id="serviceStatusDot"></span>
                 <span class="footer-value" id="taskStatus">就绪</span>
             </div>
         </div>
@@ -300,6 +375,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v=20260331m"></script>
 </body>
 </html>

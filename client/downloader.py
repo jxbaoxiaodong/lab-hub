@@ -1,431 +1,198 @@
-"""标准下载服务 - 整合自 standarddownload"""
+"""
+客户端下载器包装层。
 
-import re
-import json
+分发版客户端不能依赖 backend/ 目录，因此这里固定走客户端内置的
+`standard_auto_downloader_core.py`，避免退回旧的外标搜索逻辑。
+"""
+
+from __future__ import annotations
+
 import logging
-from typing import List, Dict, Optional, Tuple
-from dataclasses import dataclass, asdict
+import time
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
+from typing import Any, Dict, Iterable, Tuple
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class StandardDownloadInfo:
-    """标准下载信息"""
+def _load_core() -> Tuple[Any, Any]:
+    """加载客户端下载核心，开发环境下兼容后端路径。"""
+    try:
+        import standard_auto_downloader_core as core_module
 
-    standard_number: str
-    title: str
-    year: str
-    status: str
-    organization: str
-    download_links: List[Dict]
-    preview_links: List[str]
-    match_score: float
+        return core_module, core_module.StandardAutoDownloader
+    except ImportError:
+        from backend.services import standard_auto_downloader as core_module
 
-
-# 搜索源配置
-SEARCH_SOURCES = {
-    "iso_official": {
-        "name": "ISO 官方",
-        "base_url": "https://www.iso.org/standard/",
-        "search_url": "https://www.iso.org/search.html?q={query}&sort=rel&type=standard",
-        "preview_url": "https://standards.iso.org/ittf/PubliclyAvailableStandards/",
-        "format": "direct",
-        "free": True,
-    },
-    "gb_official": {
-        "name": "中国国家标准",
-        "search_url": "http://openstd.samr.gov.cn/bzgk/gb/index?t=gb&f=2026&q={query}",
-        "preview_url": "http://openstd.samr.gov.cn/bzgk/gb/",
-        "format": "preview",
-        "free": True,
-    },
-    "researchgate": {
-        "name": "ResearchGate",
-        "search_url": "https://www.researchgate.net/search/publication?q={query}",
-        "format": "preview",
-        "free": True,
-        "requires_login": True,
-    },
-    "pdfdrive": {
-        "name": "PDFdrive",
-        "search_url": "https://www.pdfdrive.to/search?q={query}",
-        "format": "direct",
-        "free": True,
-    },
-    "scribd": {
-        "name": "Scribd",
-        "search_url": "https://www.scribd.com/search?query={query}",
-        "format": "preview",
-        "free": False,
-        "trial": True,
-    },
-    "academia": {
-        "name": "Academia.edu",
-        "search_url": "https://www.academia.edu/search?q={query}",
-        "format": "preview",
-        "free": True,
-        "requires_login": True,
-    },
-    "astm": {
-        "name": "ASTM",
-        "search_url": "https://www.astm.org/search-results.html?q={query}",
-        "format": "preview",
-        "free": False,
-    },
-    "ansi": {
-        "name": "ANSI",
-        "search_url": "https://webstore.ansi.org/standards/ansistandard?searchterm={query}",
-        "format": "preview",
-        "free": False,
-    },
-    "iec": {
-        "name": "IEC",
-        "search_url": "https://webstore.iec.ch/search/public?q={query}",
-        "format": "preview",
-        "free": False,
-    },
-    "google": {
-        "name": "Google 镜像搜索",
-        "search_url": "https://www.google.com/search?q={query}+filetype:pdf+download",
-        "format": "search",
-        "free": True,
-    },
-}
-
-# 常见ISO标准直接链接
-ISO_DIRECT_LINKS = {
-    "9001": "https://standards.iso.org/ittf/PubliclyAvailableStandards/ISO_IEC%209001_2015%20ed.5%20-%20id.69711%20Publication%20PDF%20(en).zip",
-    "14001": "https://standards.iso.org/ittf/PubliclyAvailableStandards/ISO%2014001_2015%20ed.2%20-%20id.65382%20Publication%20PDF%20(en).zip",
-    "27001": "https://standards.iso.org/ittf/PubliclyAvailableStandards/ISO_IEC%2027001_2022%20ed.3%20-%20id.73119%20Publication%20PDF%20(en).zip",
-    "45001": "https://standards.iso.org/ittf/PubliclyAvailableStandards/ISO%2045001_2018%20ed.1%20-%20id.221217%20Publication%20PDF%20(en).zip",
-    "32000-2": "https://standards.iso.org/ittf/PubliclyAvailableStandards/ISO%2032000-2_2020%20ed.1%20-%20id.73786%20Publication%20PDF%20(en).zip",
-}
+        return core_module, core_module.StandardAutoDownloader
 
 
 class StandardDownloader:
-    """标准下载器"""
+    """与 `client/app.py` 保持兼容的下载器接口。"""
 
-    def __init__(self, download_dir: str = "downloads", progress_callback=None):
-        self.download_dir = download_dir
+    def __init__(
+        self,
+        download_dir: str = "downloads",
+        progress_callback=None,
+        cancel_callback=None,
+        source_timeout: int = 45,
+    ):
+        self.download_dir = Path(download_dir)
+        self.download_dir.mkdir(parents=True, exist_ok=True)
         self.progress_callback = progress_callback
-        self.results: List[StandardDownloadInfo] = []
+        self.cancel_callback = cancel_callback
+        self.source_timeout = source_timeout
 
     def _report(self, current: int, total: int, message: str, details: dict = None):
         if self.progress_callback:
             self.progress_callback(current, total, message, details)
 
-    def parse_standard_number(self, query: str) -> Dict:
-        """解析标准号"""
-        result = {
-            "original": query,
-            "organization": None,
-            "number": None,
-            "year": None,
-            "normalized": None,
-        }
+    @staticmethod
+    def _result_to_dict(result: Any) -> Dict[str, Any]:
+        if result is None:
+            return {}
+        if is_dataclass(result):
+            return asdict(result)
+        if isinstance(result, dict):
+            return dict(result)
+        data = {}
+        for key in (
+            "standard_number",
+            "success",
+            "file_path",
+            "download_url",
+            "source",
+            "message",
+            "file_size",
+        ):
+            if hasattr(result, key):
+                data[key] = getattr(result, key)
+        return data
 
-        query = query.strip().upper()
+    @classmethod
+    def _normalize_platform_results(
+        cls, raw_results: Iterable[Any], fallback_source: str = "auto"
+    ) -> Tuple[list[Dict[str, Any]], bool, str | None, str]:
+        platform_results = []
+        success = False
+        first_file_path = None
+        first_success_message = None
+        first_error_message = None
 
-        patterns = [
-            (r"(ISO)\s*(\d+)\s*[:\-]?\s*(\d{4})?", "ISO"),
-            (r"(GB/T)\s*(\d+)\s*[:\-]?\s*(\d{4})?", "GB"),
-            (r"(GB)\s*(\d+)\s*[:\-]?\s*(\d{4})?", "GB"),
-            (r"(ASTM)\s*([A-Z]+\d+)\s*[:\-]?\s*(\d{4})?", "ASTM"),
-            (r"(ANSI)[/]?(ISO)?\s*(\d+)\s*[:\-]?\s*(\d{4})?", "ANSI"),
-            (r"(IEC)\s*(\d+)\s*[:\-]?\s*(\d{4})?", "IEC"),
-            (r"(IEEE)\s*(\d+\.?\d*)\s*[:\-]?\s*(\d{4})?", "IEEE"),
-        ]
+        for raw in raw_results or []:
+            data = cls._result_to_dict(raw)
+            item_success = bool(data.get("success"))
+            item = {
+                "platform": data.get("source") or data.get("platform") or fallback_source,
+                "status": "success" if item_success else "error",
+                "standard_number": data.get("standard_number"),
+                "file_path": data.get("file_path"),
+                "download_url": data.get("download_url"),
+                "view_url": (
+                    data.get("download_url") if data.get("download_url") and not data.get("file_path") else None
+                ),
+                "message": data.get("message") or ("可用" if item_success else "无结果"),
+                "file_size": data.get("file_size", 0),
+            }
+            platform_results.append(item)
 
-        for pattern, org in patterns:
-            match = re.search(pattern, query, re.IGNORECASE)
-            if match:
-                result["organization"] = org
-                result["number"] = match.group(2)
-                if match.lastindex >= 3 and match.group(3):
-                    result["year"] = match.group(3)
-                break
+            if item_success:
+                success = True
+                if first_success_message is None:
+                    first_success_message = item["message"]
+                if first_file_path is None and item.get("file_path"):
+                    first_file_path = item["file_path"]
+            elif first_error_message is None:
+                first_error_message = item["message"]
 
-        if result["organization"] and result["number"]:
-            if result["year"]:
-                result["normalized"] = (
-                    f"{result['organization']} {result['number']}:{result['year']}"
-                )
-            else:
-                result["normalized"] = f"{result['organization']} {result['number']}"
+        if success:
+            message = first_success_message or "下载完成"
         else:
-            result["normalized"] = query
+            message = first_error_message or "未找到可下载结果"
 
-        return result
+        return platform_results, success, first_file_path, message
 
-    def fuzzy_match(self, query: str, candidates: List[str]) -> List[Tuple[str, float]]:
-        """模糊匹配"""
+    async def download(self, standard_number: str, source: str = "auto") -> Dict[str, Any]:
+        """下载标准并返回前端结果结构。"""
+        self._report(0, 100, f"开始下载: {standard_number}", {"standard": standard_number})
 
-        def similarity(s1: str, s2: str) -> float:
-            s1 = s1.upper().replace(" ", "").replace("-", "").replace(":", "")
-            s2 = s2.upper().replace(" ", "").replace("-", "").replace(":", "")
+        _, core_cls = _load_core()
+        downloader = core_cls(
+            str(self.download_dir),
+            cancel_callback=self.cancel_callback,
+            source_timeout=self.source_timeout,
+        )
 
-            if s1 == s2:
-                return 1.0
-            if s1 in s2 or s2 in s1:
-                return 0.8
-
-            common = sum(1 for c in s1 if c in s2)
-            return common / max(len(s1), len(s2)) if max(len(s1), len(s2)) > 0 else 0
-
-        results = []
-        for candidate in candidates:
-            score = similarity(query, candidate)
-            if score > 0.3:
-                results.append((candidate, score))
-
-        results.sort(key=lambda x: x[1], reverse=True)
-        return results
-
-    def search_iso(self, query: str) -> List[Dict]:
-        """搜索ISO标准"""
-        results = []
-        parsed = self.parse_standard_number(query)
-
-        if parsed["organization"] == "ISO" and parsed["number"]:
-            num = parsed["number"].replace(".", "-")
-            if num in ISO_DIRECT_LINKS:
-                results.append(
-                    {
-                        "source": "iso_official",
-                        "url": ISO_DIRECT_LINKS[num],
-                        "type": "direct",
-                        "free": True,
-                    }
-                )
-
-        return results
-
-    def search_gb(self, query: str) -> List[Dict]:
-        """搜索GB标准"""
-        results = []
-        parsed = self.parse_standard_number(query)
-
-        if parsed["organization"] in ["GB", "GB/T"]:
-            results.append(
-                {
-                    "source": "gb_official",
-                    "name": "国家标准全文公开系统",
-                    "url": "http://openstd.samr.gov.cn/bzgk/gb/index?t=gb",
-                    "type": "preview",
-                    "free": True,
-                    "note": "在线预览，可打印保存",
-                }
+        try:
+            sources = None if source in (None, "", "auto") else [source]
+            raw_results = await downloader.download(standard_number, sources=sources)
+            platform_results, success, file_path, message = self._normalize_platform_results(
+                raw_results,
+                fallback_source=source or "auto",
             )
-
-        return results
-
-    def search_multi_source(self, query: str) -> List[Dict]:
-        """多源搜索"""
-        all_links = []
-        parsed = self.parse_standard_number(query)
-        search_term = parsed["normalized"] or query
-        search_term_encoded = search_term.replace(" ", "+")
-
-        sources_list = [
-            (sid, s) for sid, s in SEARCH_SOURCES.items() if "search_url" in s
-        ]
-        total_sources = len(sources_list)
-
-        for idx, (source_id, source) in enumerate(sources_list):
             self._report(
-                idx,
-                total_sources,
-                f"搜索 {source['name']}: {query}",
-                {"source": source["name"], "source_id": source_id, "standard": query},
+                100,
+                100,
+                "下载完成" if success else "未找到可下载结果",
+                {"standard": standard_number, "success": success},
             )
-            url = source["search_url"].format(query=search_term_encoded)
-            all_links.append(
-                {
-                    "source": source_id,
-                    "name": source["name"],
-                    "url": url,
-                    "type": source.get("format", "preview"),
-                    "free": source.get("free", False),
-                    "requires_login": source.get("requires_login", False),
-                }
-            )
-
-        return all_links
-
-    def generate_download_methods(self, info: StandardDownloadInfo) -> List[Dict]:
-        """生成下载方法建议"""
-        methods = []
-
-        for link in info.download_links:
-            if link.get("type") == "direct":
-                methods.append(
-                    {
-                        "method": "直接下载",
-                        "url": link["url"],
-                        "source": link.get("name", link.get("source")),
-                        "free": link.get("free", False),
-                        "steps": ["点击下载链接", "保存 PDF"],
-                    }
-                )
-
-        for link in info.download_links:
-            if link.get("type") in ["preview", "search"]:
-                methods.append(
-                    {
-                        "method": "预览 + 打印",
-                        "url": link["url"],
-                        "source": link.get("name", link.get("source")),
-                        "free": link.get("free", False),
-                        "steps": [
-                            "打开链接",
-                            "使用浏览器预览",
-                            "Ctrl+P 打印",
-                            '选择"另存为 PDF"',
-                            "保存",
-                        ],
-                    }
-                )
-
-        methods.append(
-            {
-                "method": "浏览器扩展",
-                "url": None,
-                "source": "通用",
-                "free": True,
-                "steps": [
-                    "安装 Print Friendly & PDF 扩展",
-                    "打开标准预览页面",
-                    "点击扩展图标",
-                    "生成并下载 PDF",
-                ],
+            return {
+                "standard": standard_number,
+                "success": success,
+                "message": message,
+                "results": platform_results,
+                "file_path": file_path,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             }
-        )
-
-        methods.append(
-            {
-                "method": "开发者工具",
-                "url": None,
-                "source": "通用",
-                "free": True,
-                "steps": [
-                    "按 F12 打开开发者工具",
-                    "切换到 Network 标签",
-                    "刷新页面",
-                    "筛选 PDF 或 document",
-                    "右键复制链接",
-                    "新标签页打开下载",
+        except Exception as e:
+            logger.error("下载失败: %s", e)
+            self._report(100, 100, f"下载失败: {e}", {"standard": standard_number})
+            return {
+                "standard": standard_number,
+                "success": False,
+                "message": f"下载出错: {e}",
+                "results": [
+                    {
+                        "platform": "系统",
+                        "status": "error",
+                        "standard_number": standard_number,
+                        "file_path": None,
+                        "download_url": None,
+                        "view_url": None,
+                        "message": f"下载出错: {e}",
+                        "file_size": 0,
+                    }
                 ],
+                "file_path": None,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             }
+        finally:
+            try:
+                await downloader.close()
+            except Exception as close_error:
+                logger.debug("关闭下载器失败: %s", close_error)
+
+    def get_sources(self) -> Dict[str, Dict[str, Any]]:
+        """暴露当前客户端下载核心的下载源定义，便于调试。"""
+        core_module, _ = _load_core()
+        source_ids = getattr(
+            core_module,
+            "ACTIVE_DOWNLOAD_SOURCE_IDS",
+            getattr(core_module, "SUPPORTED_DOWNLOAD_SOURCE_IDS", []),
         )
+        source_map = getattr(core_module, "DOWNLOAD_SOURCES", {})
+        disabled = getattr(core_module, "DISABLED_DOWNLOAD_SOURCES", set())
 
-        return methods
-
-    def search(self, query: str) -> List[Dict]:
-        """搜索标准"""
-        logger.info(f"搜索标准: {query}")
-
-        parsed = self.parse_standard_number(query)
-        results = []
-
-        iso_links = self.search_iso(query)
-        if iso_links:
-            results.append(
-                StandardDownloadInfo(
-                    standard_number=parsed.get("normalized", query),
-                    title=f"{parsed.get('normalized', query)} 标准",
-                    year=parsed.get("year", "Latest"),
-                    status="Published",
-                    organization="ISO",
-                    download_links=iso_links,
-                    preview_links=[],
-                    match_score=1.0,
-                )
-            )
-
-        gb_links = self.search_gb(query)
-        if gb_links:
-            results.append(
-                StandardDownloadInfo(
-                    standard_number=parsed.get("normalized", query),
-                    title=f"{parsed.get('normalized', query)} 中国国家标准",
-                    year=parsed.get("year", "Latest"),
-                    status="Published",
-                    organization="GB",
-                    download_links=gb_links,
-                    preview_links=[],
-                    match_score=1.0,
-                )
-            )
-
-        multi_links = self.search_multi_source(query)
-        if multi_links or not results:
-            results.append(
-                StandardDownloadInfo(
-                    standard_number=parsed.get("normalized", query),
-                    title=f"{parsed.get('normalized', query)} 多源搜索结果",
-                    year=parsed.get("year", "Latest"),
-                    status="Unknown",
-                    organization=parsed.get("organization", "Unknown"),
-                    download_links=multi_links,
-                    preview_links=[
-                        l["url"] for l in multi_links if l.get("type") == "preview"
-                    ],
-                    match_score=0.8,
-                )
-            )
-
-        self.results = results
-        return [asdict(r) for r in results]
-
-    def get_download_links(self, standard_id: str) -> List[Dict]:
-        """获取下载链接"""
-        results = self.search(standard_id)
-        all_links = []
-        for r in results:
-            all_links.extend(r.get("download_links", []))
-        return all_links
-
-    def get_sources(self) -> Dict:
-        """获取可用的搜索源"""
-        return {
-            k: {"id": k, "name": v["name"], "free": v.get("free", False)}
-            for k, v in SEARCH_SOURCES.items()
-        }
-
-    def download(self, standard_number: str, source: str = "auto") -> Dict:
-        """下载标准（返回搜索链接）"""
-        import time
-
-        self._report(
-            0, 100, f"解析标准号: {standard_number}", {"standard": standard_number}
-        )
-
-        parsed = self.parse_standard_number(standard_number)
-        org = parsed.get("organization", "Unknown")
-
-        self._report(
-            10,
-            100,
-            f"识别为 {org} 标准",
-            {"organization": org, "standard": standard_number},
-        )
-
-        search_results = self.search(standard_number)
-        all_links = []
-        for r in search_results:
-            all_links.extend(r.get("download_links", []))
-
-        self._report(
-            100, 100, f"找到 {len(all_links)} 个下载源", {"links_count": len(all_links)}
-        )
-
-        return {
-            "standard": standard_number,
-            "success": True,
-            "message": "请点击搜索链接查找并下载标准文档",
-            "search_links": all_links,
-            "file_path": None,
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        }
+        result = {}
+        for source_id in source_ids:
+            if source_id in disabled:
+                continue
+            config = source_map.get(source_id, {})
+            result[source_id] = {
+                "id": source_id,
+                "name": config.get("name", source_id),
+                "type": config.get("type", ""),
+                "url": config.get("search_url") or config.get("url") or "",
+            }
+        return result

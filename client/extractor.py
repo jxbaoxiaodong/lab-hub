@@ -1,5 +1,5 @@
 """
-标准号提取器 - 整合自 lab_new
+标准号提取器
 ============
 
 从字符串中精确提取标准号，支持多种格式和特殊情况。
@@ -140,12 +140,15 @@ class StandardNumberExtractor:
 
         org_pattern = "|".join(self.orgs)
         bracket_content = r"[（(][^)）]*[)）]?"
+        generic_prefix = r"(?:[A-Z]{1,8}(?:/[A-Z]{1,8})*(?:/T)?|DB\d+(?:/T)?|JJ[FG])"
 
         # 模式1: 标准格式（高置信度）
         self.pattern_standard = re.compile(
             r"("
             + r"(?:"
             + org_pattern
+            + r"|"
+            + generic_prefix
             + r")"
             + r"\s*"
             + r"(?:"
@@ -174,6 +177,8 @@ class StandardNumberExtractor:
             r"("
             + r"(?:"
             + org_pattern
+            + r"|"
+            + generic_prefix
             + r")"
             + r"\s*"
             + r"(?:"
@@ -183,6 +188,12 @@ class StandardNumberExtractor:
             + r"[\d]+(?:\.\d+)?"
             + r"(?:\.\d+)?"
             + r")",
+            re.IGNORECASE,
+        )
+
+        # 模式2.5: 仅数字+年份（弱匹配，用于缺少前缀的输入）
+        self.pattern_bare_standard = re.compile(
+            r"(?<!\d)(\d{3,6}\s*[-—–:：/]\s*(?:19|20)?\d{2})(?!\d)",
             re.IGNORECASE,
         )
 
@@ -203,7 +214,9 @@ class StandardNumberExtractor:
         )
 
         # 章节号模式（需要排除）
-        self.pattern_chapter = re.compile(r"\s+[\d]+(?:\.\d+)*\s*$")
+        self.pattern_chapter = re.compile(
+            r"(?:\s*第\d+(?:\.\d+)*(?:章|节|条|款|项)|\s+\d+(?:\.\d+)*(?:章|节|条|款|项))\s*$"
+        )
 
     def extract(self, text: str, use_llm: bool = False) -> List[ExtractedStandard]:
         """
@@ -265,6 +278,31 @@ class StandardNumberExtractor:
                     confidence=0.8,
                     method="regex",
                     has_chapter=False,
+                )
+            )
+
+        # 第2.5层：缺少前缀但带年份的标准号（低置信度）
+        for match in self.pattern_bare_standard.finditer(text):
+            original = match.group(1).strip()
+            original, has_chapter = self._remove_chapter(original)
+
+            if original in seen or self._is_substring_of_existing(original, results):
+                continue
+            seen.add(original)
+
+            normalized = self._normalize(original)
+            org, number, year = self._parse_standard(original)
+
+            results.append(
+                ExtractedStandard(
+                    original=original,
+                    normalized=normalized,
+                    organization=org,
+                    number=number,
+                    year=year,
+                    confidence=0.6,
+                    method="regex",
+                    has_chapter=has_chapter,
                 )
             )
 
@@ -382,12 +420,16 @@ class StandardNumberExtractor:
         normalized = self._normalize(text)
 
         match = re.match(
-            r"([A-Z/]+)\s*(?:/T)?\s*([\d]+(?:\.[\d]+)?)\s*(?:[-:]([\d]{2,4}))?",
+            r"([A-Z]{1,8}(?:/[A-Z]{1,8})*(?:/T)?)\s*([\d]+(?:\.[\d]+)?)\s*(?:[-:]([\d]{2,4}))?",
             normalized,
         )
 
         if match:
             return match.group(1), match.group(2), match.group(3)
+
+        match = re.match(r"([\d]+(?:\.[\d]+)?)\s*(?:[-:]([\d]{2,4}))?", normalized)
+        if match:
+            return "", match.group(1), match.group(2)
 
         return "", text, None
 
