@@ -357,7 +357,7 @@ function showSection(section) {
 window.showSection = showSection;
 
 // ============ 在线题库 ============
-let questionBankMode = 'view'; // view | quiz
+let questionBankMode = 'quiz'; // view | quiz 默认做题模式
 let questionBankList = [];
 let questionBankCurrent = null;
 let questionBankCurrentIndex = 0;
@@ -486,12 +486,14 @@ function renderQuestionBank() {
     const currentIdx = questionBankCurrentIndex;
     const currentQuestion = questionBankCurrent.questions[currentIdx];
     container.innerHTML = `
-        <div style="margin-bottom: 0.75rem; font-weight: 700; font-size: 1.1rem;">${escapeHtml(title)}</div>
-        <div style="margin-bottom: 0.75rem; color: var(--text-secondary); font-size: 0.85rem;">题数：${questionBankCurrent.count || total}</div>
-        <div id="qbList"></div>
+        <div style="position: relative;">
+            <div style="position: absolute; top: 0; right: 0; z-index: 10; font-size: 0.8rem; color: var(--text-secondary); background: rgba(0,0,0,0.05); padding: 0.25rem 0.6rem; border-radius: 4px;">
+                ${currentIdx + 1} / ${total}
+            </div>
+            <div id="qbList" style="padding-top: 0.5rem;"></div>
+        </div>
         <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; margin-top:0.75rem;">
             <button class="btn btn-secondary" onclick="prevQuestionBankQuestion()" ${currentIdx <= 0 ? 'disabled' : ''}>上一题</button>
-            <div style="font-size:0.9rem; color:var(--text-secondary);">第 ${currentIdx + 1} / ${total} 题</div>
             <button class="btn btn-primary" onclick="nextQuestionBankQuestion()" ${currentIdx >= total - 1 ? 'disabled' : ''}>下一题</button>
         </div>
     `;
@@ -1916,15 +1918,25 @@ function showResult(type, result, message) {
                     container.innerHTML = '<div class="empty-state">未提取到任何标准号</div>';
                 });
         } else {
+            // 添加统计信息
+            const totalCount = uniqueResults.length;
+            const summaryDiv = document.createElement('div');
+            summaryDiv.style.cssText = 'margin-bottom: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 8px; text-align: center; font-size: 1.1rem; border: 1px solid var(--border); position: relative;';
+            summaryDiv.innerHTML = `
+                <button onclick="this.parentElement.remove()" style="position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; border: none; background: rgba(0,0,0,0.1); border-radius: 50%; cursor: pointer; font-size: 16px; line-height: 1; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); padding: 0;">×</button>
+                <span style="color: #10b981; font-weight: 700;">共提取到 ${totalCount} 个标准号候选</span>
+            `;
+            container.appendChild(summaryDiv);
+
             uniqueResults.forEach(item => {
                 const div = document.createElement('div');
                 div.className = 'result-item';
-                
+
                 // 获取置信度
                 const confidence = item.confidence || 1.0;
                 let confidenceDisplay = '';
                 let confidenceColor = '';
-                
+
                 if (confidence >= 0.9) {
                     confidenceDisplay = '高';
                     confidenceColor = '#10b981'; // 绿色
@@ -1935,7 +1947,7 @@ function showResult(type, result, message) {
                     confidenceDisplay = '低';
                     confidenceColor = '#ef4444'; // 红色
                 }
-                
+
                 // 显示标准号和置信度
                 div.innerHTML = `
                     <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
@@ -1947,7 +1959,7 @@ function showResult(type, result, message) {
                 `;
                 container.appendChild(div);
             });
-            
+
             const extractToolbarEl = document.getElementById('extractToolbar');
             if (extractToolbarEl) extractToolbarEl.style.display = 'flex';
         }
@@ -2014,19 +2026,45 @@ function showResult(type, result, message) {
                 border-radius: 8px;
                 border-left: 4px solid ${borderColor};
                 background: ${bgColor};
+                position: relative;
+                padding-right: 3rem;
             `;
-            
+
+            // 添加关闭按钮
+            const closeBtn = document.createElement('button');
+            closeBtn.innerHTML = '×';
+            closeBtn.style.cssText = `
+                position: absolute;
+                top: 8px;
+                right: 8px;
+                width: 24px;
+                height: 24px;
+                border: none;
+                background: rgba(0,0,0,0.1);
+                border-radius: 50%;
+                cursor: pointer;
+                font-size: 18px;
+                line-height: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: var(--text-secondary);
+                padding: 0;
+            `;
+            closeBtn.onclick = function() { div.remove(); };
+            div.appendChild(closeBtn);
+
             // 标题行：标准号 + 状态
             const titleRow = document.createElement('div');
             titleRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;';
-            
+
             let titleText = standard;
             if (inputKeyword !== extractedStandard && extractedStandard) {
                 titleText = `${inputKeyword} → ${extractedStandard}`;
             } else if (isSkipped) {
                 titleText = `${inputKeyword} (未提取到标准号)`;
             }
-            
+
             titleRow.innerHTML = `
                 <span style="font-weight: 700; font-size: 1.1rem;">${escapeHtml(titleText)}</span>
                 <span style="color: ${statusColor}; font-weight: 700; font-size: 1.1rem;">
@@ -2223,8 +2261,9 @@ function showResult(type, result, message) {
         const successCount = result.filter(r => r.status === 'success').length;
         const failCount = result.length - successCount;
         const summaryDiv = document.createElement('div');
-        summaryDiv.style.cssText = 'margin-top: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 8px; text-align: center; font-size: 1.1rem; border: 1px solid var(--border);';
+        summaryDiv.style.cssText = 'margin-top: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 8px; text-align: center; font-size: 1.1rem; border: 1px solid var(--border); position: relative;';
         summaryDiv.innerHTML = `
+            <button onclick="this.parentElement.remove()" style="position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; border: none; background: rgba(0,0,0,0.1); border-radius: 50%; cursor: pointer; font-size: 16px; line-height: 1; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); padding: 0;">×</button>
             <span style="color: #10b981; font-weight: 700;">成功: ${successCount}</span>
             <span style="margin: 0 1.5rem; color: var(--text-secondary);">|</span>
             <span style="color: #ef4444; font-weight: 700;">失败: ${failCount}</span>
@@ -2538,8 +2577,9 @@ function renderDownloadResults() {
     const successCount = downloadResults.filter(r => r.status === 'success').length;
     const failCount = downloadResults.length - successCount;
     const summaryDiv = document.createElement('div');
-    summaryDiv.style.cssText = 'margin-top: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 8px; text-align: center; font-size: 1.1rem; border: 1px solid var(--border);';
+    summaryDiv.style.cssText = 'margin-top: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 8px; text-align: center; font-size: 1.1rem; border: 1px solid var(--border); position: relative;';
     summaryDiv.innerHTML = `
+        <button onclick="this.parentElement.remove()" style="position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; border: none; background: rgba(0,0,0,0.1); border-radius: 50%; cursor: pointer; font-size: 16px; line-height: 1; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); padding: 0;">×</button>
         <span style="color: #10b981; font-weight: 700;">成功: ${successCount}</span>
         <span style="margin: 0 1.5rem; color: var(--text-secondary);">|</span>
         <span style="color: #ef4444; font-weight: 700;">失败: ${failCount}</span>
@@ -2547,6 +2587,10 @@ function renderDownloadResults() {
         <span style="color: var(--text-primary); font-weight: 500;">总计: ${downloadResults.length}</span>
     `;
     container.appendChild(summaryDiv);
+
+    // 显示工具栏
+    const toolbarEl = document.getElementById('downloadToolbar');
+    if (toolbarEl) toolbarEl.style.display = 'flex';
 }
 
 // 生成模拟下载数据
@@ -2721,9 +2765,28 @@ function showError(type, message) {
 function resetResult(type) {
     const resultEl = document.getElementById(type + 'Result');
     const progressEl = document.getElementById(type + 'Progress');
-    
+
     if (resultEl) resultEl.innerHTML = '';
     if (progressEl) progressEl.classList.remove('active');
+}
+
+// 清空结果（关闭所有结果框）
+function clearResult(type) {
+    const resultEl = document.getElementById(type + 'Result');
+    const progressEl = document.getElementById(type + 'Progress');
+    const toolbarEl = document.getElementById(type + 'Toolbar');
+
+    if (resultEl) resultEl.innerHTML = '';
+    if (progressEl) progressEl.classList.remove('active');
+    if (toolbarEl) toolbarEl.style.display = 'none';
+
+    // 重置对应全局变量
+    if (type === 'query') {
+        queryResults = [];
+        queryExportRows = [];
+    } else if (type === 'download') {
+        downloadResults = [];
+    }
 }
 
 function resetButton(type) {

@@ -3,7 +3,7 @@
 ============
 
 从字符串中精确提取标准号，支持多种格式和特殊情况。
-支持LLM辅助提取（可选）。
+支持LLM辅助提取（通过服务端转发调用portal）。
 
 使用方法：
     from extractor import StandardNumberExtractor
@@ -485,31 +485,24 @@ class StandardNumberExtractor:
         return results
 
     def _call_llm(self, prompt: str) -> Optional[str]:
-        """调用LLM API"""
-        if not self.llm_config or "tongyi" not in self.llm_config:
+        """调用LLM API - 通过服务端转发到portal"""
+        # 尝试获取hub_request（从app模块全局）
+        try:
+            from app import hub_request
+        except ImportError:
+            logger.warning("无法获取hub_request，LLM调用跳过")
             return None
 
         try:
-            config = self.llm_config["tongyi"]
+            resp = hub_request("POST", "/api/llm/extract", {
+                "prompt": prompt,
+                "temperature": 0.1,
+                "max_tokens": 2000,
+            })
 
-            response = requests.post(
-                config["api_url"],
-                headers={
-                    "Authorization": f"Bearer {config['api_token']}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": config["model_name"],
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.1,
-                    "max_tokens": 2000,
-                },
-                timeout=60,
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                content = data["choices"][0]["message"]["content"]
+            if resp and resp.status_code == 200:
+                data = resp.json()
+                content = data.get("content", "")
 
                 json_match = re.search(r"\[[\s\S]*\]", content)
                 if json_match:
@@ -518,7 +511,7 @@ class StandardNumberExtractor:
                 return content
 
         except Exception as e:
-            logger.error(f"LLM API调用失败: {e}")
+            logger.error(f"LLM API调用失败 (通过服务端转发): {e}")
 
         return None
 

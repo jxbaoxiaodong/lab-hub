@@ -1274,12 +1274,19 @@ def apply_question_bank_sync(sync_payload: dict, decrypt_key: str = ""):
         return
     files = sync_payload.get("files") or []
     changed = False
+    # 环境变量：保留本地题库，不允许服务端删除本地文件
+    preserve_local = os.environ.get("PRESERVE_LOCAL_QUESTION_BANKS", "0").strip() == "1"
+    # 保留本地手动添加的题库：只删除服务端明确标记删除的文件
+    # 不在同步列表中的本地文件会被保留
     for row in files:
         name = _safe_bank_id(row.get("name", ""))
         if not name:
             continue
         target = QUESTION_BANKS_ROOT / name
         if row.get("deleted"):
+            if preserve_local:
+                print(f"[题库] 跳过删除 {name}（PRESERVE_LOCAL_QUESTION_BANKS 已启用）")
+                continue
             if target.exists():
                 target.unlink(missing_ok=True)
                 changed = True
@@ -1307,13 +1314,17 @@ def apply_question_bank_sync(sync_payload: dict, decrypt_key: str = ""):
         changed = True
 
     if changed:
+        # 刷新清单时会包含本地已存在的文件，因为 _current_question_bank_hashes() 会扫描目录
         manifest = {
             "version": sync_payload.get("version", ""),
             "files": _current_question_bank_hashes(),
             "updated_at": datetime.now().isoformat(),
         }
         _save_question_bank_manifest(manifest)
-        print(f"[题库] 已通过心跳同步更新，共 {len(files)} 项")
+        if preserve_local:
+            print(f"[题库] 已通过心跳同步更新，共 {len(files)} 项，本地题库保护已启用")
+        else:
+            print(f"[题库] 已通过心跳同步更新，共 {len(files)} 项")
 
 
 def _safe_bank_id(bank_id: str) -> str:

@@ -78,7 +78,7 @@
                     <div style="margin-bottom: 0.8rem; padding: 0.7rem 0.9rem; border: 1px solid rgba(34, 197, 94, 0.22); border-radius: 10px; background: rgba(34, 197, 94, 0.08);">
                         <div style="font-weight: 600; font-size: 0.9rem;">核心优势</div>
                         <div style="margin-top: 0.25rem; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.55;">
-                            支持扫描件 OCR（如 CMA 证书），可自动提取标准号并标注来源页码/位置，方便后续复核。
+                            支持扫描件 OCR（如 CMA 证书附件），可自动提取标准号并标注来源页码/位置，方便后续复核。
                         </div>
                     </div>
 
@@ -130,7 +130,7 @@
                     </div>
                 </div>
                 <div class="card-body">
-                    <div style="margin-bottom: 0.8rem; padding: 0.7rem 0.9rem; border: 1px solid rgba(59, 130, 246, 0.22); border-radius: 10px; background: rgba(59, 130, 246, 0.08);">
+                    <div style="margin-bottom: 0.8rem; padding: 0.7rem 0.9rem; border: 1px solid rgba(34, 197, 94, 0.22); border-radius: 10px; background: rgba(34, 197, 94, 0.08);">
                         <div style="font-weight: 600; font-size: 0.9rem;">核心优势</div>
                         <div style="margin-top: 0.25rem; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.55;">
                             支持批量自动查询；可勾选“包含引用标准”，先查询当前标准，再汇总引用标准进行第二轮查询。
@@ -181,6 +181,7 @@
                     <!-- 查询结果工具栏 -->
                     <div class="toolbar" id="queryToolbar" style="display: none;">
                         <button class="btn btn-success" onclick="exportQueryCSV()">📥 导出CSV</button>
+                        <button class="btn btn-danger" onclick="clearResult('query')">✖️ 清空结果</button>
                     </div>
                 </div>
             </div>
@@ -197,7 +198,7 @@
                     </div>
                 </div>
                  <div class="card-body">
-                    <div style="margin-bottom: 0.8rem; padding: 0.7rem 0.9rem; border: 1px solid rgba(16, 185, 129, 0.22); border-radius: 10px; background: rgba(16, 185, 129, 0.08);">
+                    <div style="margin-bottom: 0.8rem; padding: 0.7rem 0.9rem; border: 1px solid rgba(34, 197, 94, 0.22); border-radius: 10px; background: rgba(34, 197, 94, 0.08);">
                         <div style="font-weight: 600; font-size: 0.9rem;">核心优势</div>
                         <div style="margin-top: 0.25rem; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.55;">
                             采用“网站查询 + 后台序列处理”兜底，尽量确保技术文件可下载或获得全文浏览入口；查不到可一键求助后台。
@@ -224,6 +225,11 @@
                             <div class="progress-detail" id="downloadDetail" style="margin-top: 0;">正在处理中，请稍候...</div>
                         </div>
                         <div class="result-list" id="downloadResult"></div>
+
+                        <!-- 下载结果工具栏 -->
+                        <div class="toolbar" id="downloadToolbar" style="display: none;">
+                            <button class="btn btn-danger" onclick="clearResult('download')">✖️ 清空结果</button>
+                        </div>
                     </div>
 
                     <!-- 找其他技术文件 -->
@@ -271,8 +277,8 @@
                     </div>
 
                     <div class="toggle-group" style="margin-top: 0.5rem;">
-                        <button class="toggle-btn active" id="btnQBViewMode" onclick="setQuestionBankMode('view')">📚 查看</button>
-                        <button class="toggle-btn" id="btnQBQuizMode" onclick="setQuestionBankMode('quiz')">🎯 做题</button>
+                        <button class="toggle-btn" id="btnQBViewMode" onclick="setQuestionBankMode('view')">📚 查看</button>
+                        <button class="toggle-btn active" id="btnQBQuizMode" onclick="setQuestionBankMode('quiz')">🎯 做题</button>
                     </div>
 
                     <div id="questionBankContainer" style="margin-top: 1rem;"></div>
@@ -304,22 +310,22 @@
                             <div class="feature-item">
                                 <div class="feature-number">2</div>
                                 <div>
-                                    <div class="feature-title">QC图监控系统</div>
-                                    <div class="feature-desc">质量控制图自动生成与异常检测</div>
+                                    <div class="feature-title">QC图监控</div>
+                                    <div class="feature-desc">批量读取报告电子版，根据项目、企业生成质控图，及时发现异常结果</div>
                                 </div>
                             </div>
                             <div class="feature-item">
                                 <div class="feature-number">3</div>
                                 <div>
-                                    <div class="feature-title">检测计量招投标信息采集发布系统</div>
+                                    <div class="feature-title">检测计量招投标信息采集发布</div>
                                     <div class="feature-desc">自动采集和发布检测计量领域的招投标信息</div>
                                 </div>
                             </div>
                             <div class="feature-item">
                                 <div class="feature-number">4</div>
                                 <div>
-                                    <div class="feature-title">不确定度评估系统</div>
-                                    <div class="feature-desc">测量不确定度自动评估与报告生成</div>
+                                    <div class="feature-title">不确定度评估</div>
+                                    <div class="feature-desc">描述需要评估不确定度的项目，自动制定方案，计算结果，生成报告</div>
                                 </div>
                             </div>
                         </div>
