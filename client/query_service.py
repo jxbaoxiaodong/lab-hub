@@ -873,24 +873,17 @@ class StandardQueryService:
 
     @staticmethod
     def _kill_residual_chrome_processes():
-        """Windows 上强制清理残留的 Chrome 进程"""
-        if sys.platform != "win32":
-            return
-        try:
-            subprocess.run(
-                ["taskkill", "/F", "/IM", "chrome.exe", "/T"],
-                capture_output=True, timeout=5
-            )
-        except Exception:
-            pass
+        """保留兼容入口。
+
+        旧逻辑会在 Windows 上直接 `taskkill chrome.exe`，这会误杀用户正在使用的
+        客户端页面浏览器。现在只依赖 driver.quit() 清理 Selenium 自身实例，
+        不再主动结束系统里的 Chrome 进程。
+        """
+        return
 
     def _init_selenium(self):
         """初始化Selenium WebDriver"""
         import threading
-
-        # Windows 上先清理残留进程，避免 Playwright 残留影响 Selenium
-        if sys.platform == "win32":
-            self._kill_residual_chrome_processes()
 
         # 初始化类变量
         if StandardQueryService._shared_driver_lock is None:
@@ -1047,7 +1040,7 @@ class StandardQueryService:
             logger.info("Playwright检查通过")
             return True
         except ImportError as e:
-            logger.error(f"Playwright未安装: {e}")
+            logger.info(f"Playwright未安装，已自动回退到Selenium: {e}")
             self._playwright_available = False
             return False
 
@@ -1075,16 +1068,6 @@ class StandardQueryService:
 
         # Selenium 仍然保留共享 driver
         self._driver = None
-
-        # Windows 上强制清理残留 Chrome 进程，避免影响后续 Selenium
-        if sys.platform == "win32":
-            try:
-                subprocess.run(
-                    ["taskkill", "/F", "/IM", "chrome.exe", "/T"],
-                    capture_output=True, timeout=5
-                )
-            except Exception:
-                pass
 
     async def query_single(
         self, standard_number: str, platform: str = "hunan", auto_switch: bool = True
@@ -1146,10 +1129,6 @@ class StandardQueryService:
                             pass
                     StandardQueryService._shared_driver = None
                     StandardQueryService._shared_selenium_init_error = None
-
-                    # Windows 上强制清理残留 Chrome 进程
-                    if sys.platform == "win32":
-                        self._kill_residual_chrome_processes()
 
                     raise RuntimeError(
                         f"{current_platform} 平台浏览器初始化失败，已停止继续切换平台。\n"
