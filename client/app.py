@@ -1362,10 +1362,6 @@ def apply_question_bank_sync(sync_payload: dict, decrypt_key: str = ""):
             "updated_at": datetime.now().isoformat(),
         }
         _save_question_bank_manifest(manifest)
-        if preserve_local:
-            print(f"[题库] 已通过心跳同步更新，共 {len(files)} 项，本地题库保护已启用")
-        else:
-            print(f"[题库] 已通过心跳同步更新，共 {len(files)} 项")
 
 
 def _safe_bank_id(bank_id: str) -> str:
