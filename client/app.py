@@ -7,14 +7,39 @@ Jingxi Client - Windows客户端
 import os
 import sys
 import logging
+import logging.handlers
+from pathlib import Path
 
-# 配置日志
+# 目录设置（提前到日志配置之前）
+# PyInstaller 打包后需要特殊处理：exe 所在目录作为基础目录
+if getattr(sys, "frozen", False):
+    # 打包后的 exe 运行
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    # 源码运行
+    BASE_DIR = Path(__file__).parent
+CACHE_DIR = BASE_DIR / "cache"
+DOWNLOADS_DIR = BASE_DIR / "downloads"
+STATIC_DIR = BASE_DIR / "static"
+QUESTION_BANKS_DIR = BASE_DIR / "question_banks"
+LOG_FILE = CACHE_DIR / "client.log"
+
+for d in [CACHE_DIR, DOWNLOADS_DIR, STATIC_DIR, QUESTION_BANKS_DIR]:
+    d.mkdir(exist_ok=True)
+
+# 配置日志（同时输出到控制台和文件）
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler()],
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(str(LOG_FILE), mode="a", encoding="utf-8")
+    ],
 )
 logger = logging.getLogger(__name__)
+logger.info("=" * 50)
+logger.info("客户端启动")
+logger.info("=" * 50)
 
 # 1. Python包镜像源配置（多个备用源）
 PYTHON_MIRRORS = [
@@ -75,22 +100,11 @@ import re
 import platform
 import socket
 import uuid
-from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from flask import Flask, request, jsonify, send_from_directory, make_response
-
-# 目录设置
-BASE_DIR = Path(__file__).parent
-CACHE_DIR = BASE_DIR / "cache"
-DOWNLOADS_DIR = BASE_DIR / "downloads"
-STATIC_DIR = BASE_DIR / "static"
-QUESTION_BANKS_DIR = BASE_DIR / "question_banks"
-
-for d in [CACHE_DIR, DOWNLOADS_DIR, STATIC_DIR, QUESTION_BANKS_DIR]:
-    d.mkdir(exist_ok=True)
 
 TECH_TASKS_FILE = CACHE_DIR / "tech_file_tasks.json"
 TECH_TASKS_ROOT = DOWNLOADS_DIR / "tech_file_tasks"
@@ -273,7 +287,7 @@ def decrypt_config(encrypted_payload: str, key: str) -> dict:
         config_json = _decrypt_legacy_xor_bytes(encrypted, key).decode("utf-8")
         return json.loads(config_json)
     except Exception as e:
-        print(f"[配置解密] 失败: {e}")
+        logger.error(f"[配置解密] 失败: {e}")
         return None
 
 
@@ -310,9 +324,6 @@ def update_config_key(
         _config_key = new_key
         _decrypted_config = decrypted
         _config_expires = time.time() + expires_seconds
-        print(
-            f"[配置] 密钥已更新，配置有效期至 {datetime.fromtimestamp(_config_expires).strftime('%H:%M:%S')}"
-        )
         return True
 
     if allow_refetch:
@@ -2909,20 +2920,20 @@ def start_bootstrap():
 
                 if resp.get("banned"):
                     reason = resp.get("reason") or "已被封禁"
-                    print(f"[注册] 失败: {reason}")
+                    logger.error(f"[注册] 失败: {reason}")
                     _write_start_error(f"[注册] 失败: {reason}")
                     _set_hub_state("banned", "已被服务端禁用", reason)
                     return
                 if resp.get("duplicate_id"):
                     reason = resp.get("message") or "设备ID异常"
-                    print(f"[注册] 失败: {reason}")
+                    logger.error(f"[注册] 失败: {reason}")
                     _write_start_error(f"[注册] 失败: {reason}")
                     _set_hub_state("device_id_conflict", "设备ID异常", reason)
                     return
 
                 if not resp.get("success"):
                     err = resp.get("error") or "注册失败"
-                    print(f"[注册] 失败: {err}")
+                    logger.error(f"[注册] 失败: {err}")
                     _write_start_error(f"[注册] 失败: {err}")
                     retry_count += 1
                     _set_hub_state("error", "无法连接服务端，正在重试…", err)
@@ -2931,11 +2942,10 @@ def start_bootstrap():
                     continue
 
                 _save_client_auth_token((resp.get("data") or {}).get("auth_token", ""))
-                print("[注册] 成功")
 
                 if not download_code():
                     err = "无法从服务端获取配置（加密配置/密钥）"
-                    print(f"[启动] 失败: {err}")
+                    logger.error(f"[启动] 失败: {err}")
                     _write_start_error(f"[启动] 失败: {err}")
                     retry_count += 1
                     _set_hub_state("error", "配置获取失败，正在重试…", err)
@@ -2989,12 +2999,12 @@ def start_bootstrap():
                                 _set_hub_state("ready", "就绪")
                             elif resp.get("banned"):
                                 reason = resp.get("reason") or "已被封禁"
-                                print(f"[心跳] 已被封禁: {reason}")
+                                logger.error(f"[心跳] 已被封禁: {reason}")
                                 _set_hub_state("banned", "已被服务端禁用", reason)
                                 break
                             elif resp.get("duplicate_id"):
                                 reason = resp.get("message") or "设备ID异常"
-                                print(f"[心跳] 失败: {reason}")
+                                logger.error(f"[心跳] 失败: {reason}")
                                 _set_hub_state("device_id_conflict", "设备ID异常", reason)
                                 break
                             else:
@@ -3003,12 +3013,12 @@ def start_bootstrap():
                         except Exception as e:
                             retry_count += 1
                             err = str(e)
+                            logger.error(f"[心跳] 异常: {e} (第{retry_count}次)")
                             if retry_count <= max_retries:
-                                print(f"[心跳] 连接失败 (第{retry_count}次重试): {e}")
                                 _set_hub_state("error", "服务端心跳失败，正在重试…", err)
                                 time.sleep(retry_delay * retry_count)
                             else:
-                                print(f"[心跳] 连续{max_retries}次失败，等待重连")
+                                logger.error(f"[心跳] 连续{max_retries}次失败，等待重连")
                                 _set_hub_state("error", "服务端心跳失败，等待重连…", err)
                                 retry_count = max_retries
 
@@ -3017,7 +3027,7 @@ def start_bootstrap():
 
             except Exception as e:
                 err = str(e)
-                print(f"[启动] 异常: {err}")
+                logger.error(f"[启动] 异常: {err}")
                 _write_start_error(f"[启动] 异常: {err}")
                 _set_hub_state("error", "启动异常，正在重试…", err)
                 time.sleep(min(backoff, 30))
