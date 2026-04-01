@@ -24,6 +24,21 @@
 
 ---
 
+## 关于打包发布
+
+完整打包发布流程请参考：
+
+- `./release.sh` - 唯一正式发布脚本，自动完成整条发布链路
+- `/home/bob/projects/lab/DEPLOY_MANUAL.md` - 完整发布流程说明
+- `/home/bob/projects/lab/GITEE_UPLOAD_INSTRUCTIONS.md` - Gitee 上传说明
+
+发布命令：
+```bash
+./release.sh vX.X.X "release: vX.X.X"
+```
+
+---
+
 ## 日期：2026-04-01
 
 ### 题库清理与UI优化
