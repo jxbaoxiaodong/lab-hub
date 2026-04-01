@@ -10,21 +10,48 @@ import logging
 import logging.handlers
 from pathlib import Path
 
+SOURCE_DIR = Path(__file__).resolve().parent
+
 # 目录设置（提前到日志配置之前）
-# PyInstaller 打包后需要特殊处理：exe 所在目录作为基础目录
+# BASE_DIR: 运行期可写目录（源码目录 / exe 所在目录）
+# BUNDLED_DIR: PyInstaller onefile 解包后的资源目录（源码模式下等于 SOURCE_DIR）
 if getattr(sys, "frozen", False):
-    # 打包后的 exe 运行
     BASE_DIR = Path(sys.executable).resolve().parent
 else:
-    # 源码运行
-    BASE_DIR = Path(__file__).parent
+    BASE_DIR = SOURCE_DIR
+BUNDLED_DIR = Path(getattr(sys, "_MEIPASS", SOURCE_DIR)).resolve()
+
+
+def _resolve_resource_dir(dirname: str, required_file: str | None = None) -> Path:
+    candidates = []
+    seen = set()
+    for root in [BASE_DIR, BUNDLED_DIR, SOURCE_DIR]:
+        candidate = root / dirname
+        normalized = str(candidate)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        candidates.append(candidate)
+
+    if required_file:
+        for candidate in candidates:
+            if (candidate / required_file).exists():
+                return candidate
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return BASE_DIR / dirname
+
+
 CACHE_DIR = BASE_DIR / "cache"
 DOWNLOADS_DIR = BASE_DIR / "downloads"
-STATIC_DIR = BASE_DIR / "static"
+STATIC_DIR = _resolve_resource_dir("static", "index_offline.html")
 QUESTION_BANKS_DIR = BASE_DIR / "question_banks"
 LOG_FILE = CACHE_DIR / "client.log"
 
-for d in [CACHE_DIR, DOWNLOADS_DIR, STATIC_DIR, QUESTION_BANKS_DIR]:
+for d in [CACHE_DIR, DOWNLOADS_DIR, QUESTION_BANKS_DIR]:
     d.mkdir(exist_ok=True)
 
 # 配置日志（同时输出到控制台和文件）
@@ -40,6 +67,9 @@ logger = logging.getLogger(__name__)
 logger.info("=" * 50)
 logger.info("客户端启动")
 logger.info("=" * 50)
+logger.info("BASE_DIR: %s", BASE_DIR)
+logger.info("BUNDLED_DIR: %s", BUNDLED_DIR)
+logger.info("STATIC_DIR: %s", STATIC_DIR)
 
 # 1. Python包镜像源配置（多个备用源）
 PYTHON_MIRRORS = [
@@ -3068,7 +3098,7 @@ if __name__ == "__main__":
     sock.close()
 
     try:
-        cache_dir = Path(__file__).resolve().parent / "cache"
+        cache_dir = BASE_DIR / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
         (cache_dir / "client_port.txt").write_text(str(port), encoding="utf-8")
     except Exception:
