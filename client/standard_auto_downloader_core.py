@@ -19,6 +19,8 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 ALLOW_INSECURE_TLS = os.environ.get("LAB_ALLOW_INSECURE_TLS", "0") == "1"
+PLAYWRIGHT_ENABLED = os.environ.get("LAB_ENABLE_PLAYWRIGHT", "0") == "1"
+PLAYWRIGHT_DISABLED_MESSAGE = "Playwright已默认停用，下载模块直接使用Selenium（设置 LAB_ENABLE_PLAYWRIGHT=1 可重新启用）"
 
 # 明确不可用的下载源，遇到旧入口时直接忽略
 DISABLED_DOWNLOAD_SOURCES = {"renren", "wenku_baidu", "doc88", "docin"}
@@ -1248,7 +1250,7 @@ class StandardAutoDownloader:
             raise RuntimeError(f"所有浏览器初始化失败: Playwright={self._playwright_init_error}, Selenium={self._selenium_init_error}")
 
         # 先尝试 Playwright
-        if not self._playwright_init_error:
+        if PLAYWRIGHT_ENABLED and not self._playwright_init_error:
             try:
                 from playwright.async_api import async_playwright
 
@@ -1281,6 +1283,8 @@ class StandardAutoDownloader:
                 self._playwright_available = False
                 self._playwright_init_error = str(e)
                 logger.warning(f"Playwright 初始化失败，将降级到 Selenium: {e}")
+        elif not PLAYWRIGHT_ENABLED:
+            self._playwright_available = False
 
         # Playwright 失败，降级到 Selenium
         if not self._selenium_init_error:
@@ -1302,6 +1306,10 @@ class StandardAutoDownloader:
     def _check_playwright(self) -> bool:
         if self._playwright_available is not None:
             return self._playwright_available
+        if not PLAYWRIGHT_ENABLED:
+            logger.info(PLAYWRIGHT_DISABLED_MESSAGE)
+            self._playwright_available = False
+            return False
         try:
             from playwright.async_api import async_playwright  # noqa: F401
             self._playwright_available = True

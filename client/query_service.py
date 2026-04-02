@@ -5,7 +5,7 @@
 2. 当Selenium不可用时抛出明确异常
 3. 当查询失败时抛出异常而非返回假数据
 4. 添加了详细日志便于调试
-5. 添加Playwright优先机制，失败时回退到Selenium
+5. Playwright 代码保留，但当前默认停用，直接使用 Selenium；后续可通过环境变量重新启用
 """
 
 import asyncio
@@ -23,6 +23,8 @@ from dataclasses import dataclass, asdict
 
 logger = logging.getLogger(__name__)
 ALLOW_INSECURE_TLS = os.environ.get("LAB_ALLOW_INSECURE_TLS", "0") == "1"
+PLAYWRIGHT_ENABLED = os.environ.get("LAB_ENABLE_PLAYWRIGHT", "0") == "1"
+PLAYWRIGHT_DISABLED_MESSAGE = "Playwright已默认停用，直接使用Selenium（设置 LAB_ENABLE_PLAYWRIGHT=1 可重新启用）"
 
 
 def _build_ssl_context():
@@ -63,7 +65,7 @@ QUERY_PLATFORMS = {
         "name": "湖南省标准信息公共服务平台",
         "url": "https://www.hnbzw.com/Standard/StdSearch.aspx",
         "input_selector": "#txtNo",
-        "selenium_input_selectors": ["#txtNo", "#txtStd"],
+        "selenium_input_selectors": ["#txtStd", "#txtNo"],
         "search_selector": "#ibtnSearch",
         "result_selector": ".lisyt-xq",
         "need_format": False,  # 允许模糊检索，不分大小写和空格，最好整个输入
@@ -153,6 +155,8 @@ def format_standard_code(code: str) -> str:
 
 def check_playwright_available() -> tuple:
     """检查Playwright是否可用"""
+    if not PLAYWRIGHT_ENABLED:
+        return False, PLAYWRIGHT_DISABLED_MESSAGE
     try:
         from playwright.async_api import async_playwright
         return True, "Playwright可用"
@@ -1034,6 +1038,11 @@ class StandardQueryService:
         if self._playwright_available is not None:
             return self._playwright_available
 
+        if not PLAYWRIGHT_ENABLED:
+            logger.info(PLAYWRIGHT_DISABLED_MESSAGE)
+            self._playwright_available = False
+            return False
+
         try:
             from playwright.async_api import async_playwright
             self._playwright_available = True
@@ -1341,8 +1350,9 @@ class StandardQueryService:
             selectors.append(base_selector)
 
         if platform == "hunan":
-            # 湖南平台 Playwright 实测使用 #txtNo 更稳定，Selenium 也优先走精确标准号输入框。
-            selectors = ["#txtNo", "#txtStd"] + selectors
+            # 湖南平台当前可见输入框通常是 #txtStd。
+            # 先尝试它，避免先等 #txtNo 超时造成 10+ 秒停顿。
+            selectors = ["#txtStd", "#txtNo"] + selectors
 
         seen = set()
         ordered = []
