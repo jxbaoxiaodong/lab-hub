@@ -163,7 +163,7 @@ QUESTION_BANK_SYNC_ALGORITHM = "aes-256-gcm"
 browser_warmup_lock = threading.Lock()
 browser_warmup_state = {
     "state": "pending",
-    "message": "首次启动正在准备查询/下载浏览器环境，可能会短暂弹出空白 Chrome 窗口，完成后通常不会再出现。",
+    "message": "首次启动正在准备查询/下载浏览器环境，可能会短暂弹出空白 Chrome 窗口。如果弹出空白页，手动关闭即可。",
     "first_run": True,
     "completed_modules": {},
 }
@@ -1038,7 +1038,7 @@ def _refresh_browser_warmup_state_from_disk() -> None:
         else:
             browser_warmup_state["state"] = "pending"
             browser_warmup_state["message"] = (
-                "首次启动正在准备查询/下载浏览器环境，可能会短暂弹出空白 Chrome 窗口，完成后通常不会再出现。"
+                "首次启动正在准备查询/下载浏览器环境，可能会短暂弹出空白 Chrome 窗口。如果弹出空白页，手动关闭即可。"
             )
 
 
@@ -1096,7 +1096,7 @@ def start_browser_warmup() -> None:
             modules = dict(persisted.get("modules") or {})
             _update_browser_warmup_state(
                 "running",
-                "正在初始化浏览器环境，首次可能会短暂弹出空白 Chrome 窗口，完成后通常不会再出现。",
+                "正在初始化浏览器环境，首次可能会短暂弹出空白 Chrome 窗口。如果弹出空白页，手动关闭即可。",
                 first_run=True,
             )
 
@@ -1109,7 +1109,7 @@ def start_browser_warmup() -> None:
                     continue
                 _update_browser_warmup_state(
                     "running",
-                    f"正在初始化{module_label}浏览器环境，首次可能会短暂弹出空白 Chrome 窗口。",
+                    f"正在初始化{module_label}浏览器环境，首次可能会短暂弹出空白 Chrome 窗口。如果弹出空白页，手动关闭即可。",
                     first_run=True,
                 )
                 logger.info("[BROWSER WARMUP] start %s", module_key)
@@ -1125,7 +1125,7 @@ def start_browser_warmup() -> None:
             logger.warning("[BROWSER WARMUP] failed: %s", e)
             _update_browser_warmup_state(
                 "error",
-                "浏览器首次初始化未完全完成，首次查询或下载时仍可能短暂弹出空白 Chrome 窗口。",
+                "浏览器首次初始化未完全完成，首次查询或下载时仍可能短暂弹出空白 Chrome 窗口。如果弹出空白页，手动关闭即可。",
                 first_run=True,
             )
 

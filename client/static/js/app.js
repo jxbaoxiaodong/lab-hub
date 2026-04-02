@@ -886,7 +886,7 @@ async function loadStatus() {
             ) {
                 browserWarmupNoticeShown = true;
                 showBrowserWarmupModal(
-                    data.data.browser_warmup_message || '首次正在初始化浏览器环境，可能会短暂弹出空白 Chrome 窗口，完成后通常不会再出现。'
+                    data.data.browser_warmup_message || '首次正在初始化浏览器环境，可能会短暂弹出空白 Chrome 窗口。如果弹出空白页，手动关闭即可。'
                 );
             }
             // 不再显示服务端地址，服务端只用于心跳
@@ -2721,7 +2721,7 @@ function showBrowserWarmupModal(message) {
     const existing = document.getElementById('browserWarmupModal');
     if (existing) {
         const msgEl = existing.querySelector('[data-role="message"]');
-        if (msgEl) msgEl.textContent = message || '首次正在初始化浏览器环境，可能会短暂弹出空白 Chrome 窗口。';
+        if (msgEl) msgEl.textContent = message || '首次正在初始化浏览器环境，可能会短暂弹出空白 Chrome 窗口。如果弹出空白页，手动关闭即可。';
         return;
     }
 
@@ -2737,10 +2737,10 @@ function showBrowserWarmupModal(message) {
         <div style="background: var(--bg-secondary); padding: 1.4rem 1.5rem; border-radius: 12px; max-width: 460px; width: 100%; border: 1px solid rgba(59,130,246,0.25); box-shadow: 0 18px 50px rgba(0,0,0,0.28);">
             <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.75rem;">首次初始化浏览器环境</div>
             <div data-role="message" style="font-size: 0.92rem; color: var(--text-secondary); line-height: 1.65; margin-bottom: 1rem;">
-                ${escapeHtml(message || '首次正在初始化浏览器环境，可能会短暂弹出空白 Chrome 窗口。')}
+                ${escapeHtml(message || '首次正在初始化浏览器环境，可能会短暂弹出空白 Chrome 窗口。如果弹出空白页，手动关闭即可。')}
             </div>
             <div style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 1rem;">
-                这是自动化浏览器首启预热，完成后通常不会再次出现。如果页面已弹出空白 Chrome，请等待几秒，不需要手动操作。
+                如果弹出空白页，手动关闭即可。
             </div>
             <div style="display:flex; justify-content:flex-end;">
                 <button id="browserWarmupModalClose" style="padding: 0.65rem 1rem; background: #3b82f6; color: #fff; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">
