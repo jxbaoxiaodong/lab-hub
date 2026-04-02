@@ -1194,6 +1194,19 @@ class StandardAutoDownloader:
         options = Options()
         if headless:
             options.add_argument(headless_arg or "--headless=new")
+        options.add_argument("--remote-debugging-pipe")
+        options.add_argument("--start-minimized")
+        options.add_argument("--window-position=-2400,-2400")
+        options.add_argument("--window-size=1280,960")
+        options.add_argument("--no-first-run")
+        options.add_argument("--no-default-browser-check")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+        options.add_argument("--disable-renderer-backgrounding")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-popup-blocking")
+        options.add_argument("--disable-session-crashed-bubble")
+        options.add_argument("--disable-infobars")
+        options.add_argument("--disable-extensions")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
@@ -1218,6 +1231,53 @@ class StandardAutoDownloader:
             options.binary_location = chrome_binary
         return options
 
+    @staticmethod
+    def _hide_selenium_window(driver):
+        if driver is None:
+            return
+
+        for action in (
+            lambda: driver.minimize_window(),
+            lambda: driver.set_window_position(-2400, 0),
+            lambda: driver.set_window_size(1280, 960),
+        ):
+            try:
+                action()
+            except Exception:
+                pass
+
+        try:
+            window_info = driver.execute_cdp_cmd("Browser.getWindowForTarget", {})
+            window_id = window_info.get("windowId")
+            if window_id:
+                for bounds in (
+                    {"windowState": "minimized"},
+                    {"left": -32000, "top": 0, "width": 1280, "height": 960},
+                ):
+                    try:
+                        driver.execute_cdp_cmd(
+                            "Browser.setWindowBounds",
+                            {"windowId": window_id, "bounds": bounds},
+                        )
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        try:
+            driver.execute_script("window.blur();")
+        except Exception:
+            pass
+
+    def _navigate_selenium(self, url: str, pause: float = 2):
+        self._driver.get(url)
+        self._hide_selenium_window(self._driver)
+        try:
+            self._driver.execute_script("window.focus = function(){};")
+        except Exception:
+            pass
+        time.sleep(pause)
+
     def _create_selenium_driver(self, service, headless: bool = True):
         last_error = None
         for headless_arg in ("--headless=new", "--headless"):
@@ -1227,6 +1287,9 @@ class StandardAutoDownloader:
             )
             try:
                 driver = self._webdriver.Chrome(service=service, options=options)
+                self._hide_selenium_window(driver)
+                time.sleep(0.05)
+                self._hide_selenium_window(driver)
                 driver.set_page_load_timeout(30)
                 driver.implicitly_wait(self._default_implicit_wait)
                 return driver
@@ -1239,7 +1302,9 @@ class StandardAutoDownloader:
                 )
         if not headless:
             options = self._build_selenium_options(headless=False)
-            return self._webdriver.Chrome(service=service, options=options)
+            driver = self._webdriver.Chrome(service=service, options=options)
+            self._hide_selenium_window(driver)
+            return driver
         raise last_error or RuntimeError("ChromeDriver初始化失败")
 
     async def _init_browser(self, headless: bool = True):
@@ -1555,8 +1620,7 @@ class StandardAutoDownloader:
 
     def _selenium_page_source(self, url: str) -> str:
         self._init_selenium(headless=True)
-        self._driver.get(url)
-        time.sleep(2)
+        self._navigate_selenium(url)
         return self._driver.page_source
 
     def _format_file_display(self, standard_number: str) -> str:
@@ -2048,8 +2112,7 @@ class StandardAutoDownloader:
             query = self._build_search_term(source_id, standard_number)
             target_url = search_url.format(query=query) if "{query}" in search_url else search_url
             logger.info(f"[{source_name}/Selenium] 打开搜索页: {target_url}")
-            self._driver.get(target_url)
-            time.sleep(2)
+            self._navigate_selenium(target_url)
             self._fill_search_input_sync(query, script)
             self._trigger_search_sync(script)
             self._wait_for_results_sync(script)
@@ -2334,8 +2397,7 @@ class StandardAutoDownloader:
                     strong_candidates.sort(key=lambda item: (item[0], len(item[2])))
                     best_href = strong_candidates[-1][1]
                     if best_href:
-                        self._driver.get(best_href)
-                        time.sleep(2)
+                        self._navigate_selenium(best_href)
                         return self._driver.current_url
 
                 for link in links:
@@ -2351,8 +2413,7 @@ class StandardAutoDownloader:
                         best_score = score
                         best_href = href
                 if best_href:
-                    self._driver.get(best_href)
-                    time.sleep(2)
+                    self._navigate_selenium(best_href)
                     return self._driver.current_url
 
             selectors = script.get("result_link_selectors", ["a[href]"])
@@ -2376,8 +2437,7 @@ class StandardAutoDownloader:
                     best_score = score
                     best_href = href
             if best_href:
-                self._driver.get(best_href)
-                time.sleep(2)
+                self._navigate_selenium(best_href)
                 return self._driver.current_url
         except Exception:
             pass
@@ -2866,8 +2926,7 @@ class StandardAutoDownloader:
         logger.info(f"[国家标准/Selenium] 正在搜索: {search_term}")
 
         try:
-            self._driver.get("https://openstd.samr.gov.cn/bzgk/gb/std_list")
-            time.sleep(2)
+            self._navigate_selenium("https://openstd.samr.gov.cn/bzgk/gb/std_list")
             from selenium.webdriver.common.by import By
             from selenium.webdriver.common.keys import Keys
 
@@ -2944,6 +3003,7 @@ class StandardAutoDownloader:
             new_handles = list(after_handles - before_handles)
             if new_handles:
                 self._driver.switch_to.window(new_handles[0])
+                self._hide_selenium_window(self._driver)
             view_url = self._driver.current_url
             title_standard = self._extract_standard_from_title(self._driver.title or "")
             if title_standard:
@@ -2971,8 +3031,7 @@ class StandardAutoDownloader:
         search_url = f"http://www.bzfsc.com/search/{standard_number.replace('/', '_')}"
         logger.info(f"[标准下载网/Selenium] 正在搜索: {search_url}")
         try:
-            self._driver.get(search_url)
-            time.sleep(2)
+            self._navigate_selenium(search_url)
 
             selectors = [
                 'a[href*="/standard/"]',
@@ -2991,8 +3050,7 @@ class StandardAutoDownloader:
                 href = result_link.get_attribute("href") or ""
                 if href:
                     target_url = href
-                    self._driver.get(href)
-                    time.sleep(2)
+                    self._navigate_selenium(href)
 
             html = self._driver.page_source or ""
             if "下载" not in html and "download" not in html.lower() and not result_link:
@@ -3065,8 +3123,7 @@ class StandardAutoDownloader:
         search_url = f"http://www.csres.com/search?keyword={standard_number.replace(' ', '+')}"
         logger.info(f"[工标网/Selenium] 正在搜索: {search_url}")
         try:
-            self._driver.get(search_url)
-            time.sleep(2)
+            self._navigate_selenium(search_url)
 
             result_link = self._selenium_find_best_link(
                 self._driver,
@@ -3084,8 +3141,7 @@ class StandardAutoDownloader:
                 href = result_link.get_attribute("href") or ""
                 if href:
                     target_url = href
-                    self._driver.get(href)
-                    time.sleep(2)
+                    self._navigate_selenium(href)
 
             html = self._driver.page_source or ""
             if "标准" not in html and "result" not in html.lower() and not result_link:
@@ -3161,8 +3217,7 @@ class StandardAutoDownloader:
         search_url = f"https://down.foodmate.net/standard/search.php?kw={search_term}"
         logger.info(f"[食品伙伴网/Selenium] 正在搜索: {search_url}")
         try:
-            self._driver.get(search_url)
-            time.sleep(2)
+            self._navigate_selenium(search_url)
             selectors = [
                 '.list.flck a[href*="/standard/sort/"][href$=".html"]',
                 'a[href*="/standard/sort/"][href$=".html"]',
@@ -3179,8 +3234,7 @@ class StandardAutoDownloader:
 
             href = result_link.get_attribute("href") or ""
             if href:
-                self._driver.get(href)
-                time.sleep(2)
+                self._navigate_selenium(href)
 
             actual_standard = standard_number
             try:
@@ -3267,8 +3321,7 @@ class StandardAutoDownloader:
         from selenium.webdriver.common.by import By
 
         try:
-            self._driver.get(search_url)
-            time.sleep(2)
+            self._navigate_selenium(search_url)
 
             if source_id in ENTRY_ONLY_DOWNLOAD_SOURCES:
                 current_url = self._driver.current_url or search_url
@@ -3301,8 +3354,7 @@ class StandardAutoDownloader:
                 href = result_link.get_attribute("href") or ""
                 if href:
                     target_url = href
-                    self._driver.get(href)
-                    time.sleep(2)
+                    self._navigate_selenium(href)
 
             page_text = self._driver.page_source or ""
             actual_standard = self._format_actual_standard(standard_number)

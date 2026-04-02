@@ -557,11 +557,21 @@ class StandardQueryService:
         options = Options()
         if headless_arg:
             options.add_argument(headless_arg)
+        options.add_argument("--remote-debugging-pipe")
         # 某些 Windows/驱动组合下即便传了 headless 也可能短暂露出窗口，
         # 这里额外把窗口最小化并挪到屏幕外，尽量避免打扰用户。
         options.add_argument("--start-minimized")
         options.add_argument("--window-position=-2400,-2400")
         options.add_argument("--window-size=1280,960")
+        options.add_argument("--no-first-run")
+        options.add_argument("--no-default-browser-check")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+        options.add_argument("--disable-renderer-backgrounding")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-popup-blocking")
+        options.add_argument("--disable-session-crashed-bubble")
+        options.add_argument("--disable-infobars")
+        options.add_argument("--disable-extensions")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
@@ -594,12 +604,37 @@ class StandardQueryService:
             except Exception:
                 pass
 
+        try:
+            window_info = driver.execute_cdp_cmd("Browser.getWindowForTarget", {})
+            window_id = window_info.get("windowId")
+            if window_id:
+                for bounds in (
+                    {"windowState": "minimized"},
+                    {"left": -32000, "top": 0, "width": 1280, "height": 960},
+                ):
+                    try:
+                        driver.execute_cdp_cmd(
+                            "Browser.setWindowBounds",
+                            {"windowId": window_id, "bounds": bounds},
+                        )
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        try:
+            driver.execute_script("window.blur();")
+        except Exception:
+            pass
+
     def _create_selenium_driver(self, service):
         last_error = None
         for headless_arg in ("--headless=new", "--headless"):
             options = self._build_selenium_options(headless_arg=headless_arg)
             try:
                 driver = self._webdriver.Chrome(service=service, options=options)
+                self._hide_selenium_window(driver)
+                time.sleep(0.05)
                 self._hide_selenium_window(driver)
                 try:
                     driver.execute_cdp_cmd(
@@ -1519,6 +1554,7 @@ class StandardQueryService:
                 self._driver.execute_script("window.stop();")
             except Exception:
                 pass
+        self._hide_selenium_window(self._driver)
         try:
             self._wait_for_document_ready(timeout=20 if platform == "liaocheng" else 12)
         except TimeoutException:
@@ -1625,6 +1661,7 @@ class StandardQueryService:
                         self._driver.execute_script("window.stop();")
                     except Exception:
                         pass
+                self._hide_selenium_window(self._driver)
                 try:
                     self._wait_for_document_ready(
                         timeout=20 if platform == "liaocheng" else 12
@@ -1655,6 +1692,7 @@ class StandardQueryService:
                             self._driver.execute_script("window.stop();")
                         except Exception:
                             pass
+                    self._hide_selenium_window(self._driver)
                     try:
                         self._wait_for_document_ready(
                             timeout=20 if platform == "liaocheng" else 12
@@ -1684,6 +1722,7 @@ class StandardQueryService:
                         if window != original_window
                     ][0]
                     self._driver.switch_to.window(new_window)
+                    self._hide_selenium_window(self._driver)
                     logger.info(f"[QUERY] 切换到新窗口")
 
                     try:
