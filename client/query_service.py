@@ -27,6 +27,24 @@ PLAYWRIGHT_ENABLED = os.environ.get("LAB_ENABLE_PLAYWRIGHT", "0") == "1"
 PLAYWRIGHT_DISABLED_MESSAGE = "Playwright已默认停用，直接使用Selenium（设置 LAB_ENABLE_PLAYWRIGHT=1 可重新启用）"
 
 
+def _get_query_browser_profile_dir() -> Optional[Path]:
+    configured = (os.environ.get("LAB_QUERY_BROWSER_PROFILE_DIR") or "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+    else:
+        try:
+            base_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+        except Exception:
+            base_dir = Path.cwd()
+        path = base_dir / "cache" / "browser_profile_query"
+
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    except Exception:
+        return None
+
+
 def _build_ssl_context():
     import ssl
 
@@ -583,6 +601,9 @@ class StandardQueryService:
         )
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option("useAutomationExtension", False)
+        profile_dir = _get_query_browser_profile_dir()
+        if profile_dir:
+            options.add_argument(f"--user-data-dir={profile_dir}")
         chrome_binary = self._detect_chrome_binary()
         if chrome_binary:
             options.binary_location = chrome_binary

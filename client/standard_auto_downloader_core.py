@@ -29,6 +29,24 @@ DISABLED_DOWNLOAD_SOURCES = {"renren", "wenku_baidu", "doc88", "docin"}
 ENTRY_ONLY_DOWNLOAD_SOURCES = {"mee_hj"}
 
 
+def _get_download_browser_profile_dir() -> Optional[Path]:
+    configured = (os.environ.get("LAB_DOWNLOAD_BROWSER_PROFILE_DIR") or "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+    else:
+        try:
+            base_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+        except Exception:
+            base_dir = Path.cwd()
+        path = base_dir / "cache" / "browser_profile_download"
+
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    except Exception:
+        return None
+
+
 @dataclass
 class DownloadResult:
     """下载结果"""
@@ -1225,6 +1243,9 @@ class StandardAutoDownloader:
             "safebrowsing.enabled": True,
         }
         options.add_experimental_option("prefs", prefs)
+        profile_dir = _get_download_browser_profile_dir()
+        if profile_dir:
+            options.add_argument(f"--user-data-dir={profile_dir}")
 
         chrome_binary = self._detect_chrome_binary()
         if chrome_binary:

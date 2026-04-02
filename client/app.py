@@ -50,9 +50,15 @@ DOWNLOADS_DIR = BASE_DIR / "downloads"
 STATIC_DIR = _resolve_resource_dir("static", "index_offline.html")
 QUESTION_BANKS_DIR = BASE_DIR / "question_banks"
 LOG_FILE = CACHE_DIR / "client.log"
+BROWSER_PROFILE_QUERY_DIR = CACHE_DIR / "browser_profile_query"
+BROWSER_PROFILE_DOWNLOAD_DIR = CACHE_DIR / "browser_profile_download"
+BROWSER_WARMUP_STATE_FILE = CACHE_DIR / "browser_warmup_state.json"
 
-for d in [CACHE_DIR, DOWNLOADS_DIR, QUESTION_BANKS_DIR]:
+for d in [CACHE_DIR, DOWNLOADS_DIR, QUESTION_BANKS_DIR, BROWSER_PROFILE_QUERY_DIR, BROWSER_PROFILE_DOWNLOAD_DIR]:
     d.mkdir(exist_ok=True)
+
+os.environ.setdefault("LAB_QUERY_BROWSER_PROFILE_DIR", str(BROWSER_PROFILE_QUERY_DIR))
+os.environ.setdefault("LAB_DOWNLOAD_BROWSER_PROFILE_DIR", str(BROWSER_PROFILE_DOWNLOAD_DIR))
 
 # 配置日志（同时输出到控制台和文件）
 logging.basicConfig(
@@ -154,6 +160,14 @@ LOCAL_API_HEADER = "X-Lab-Local-Api-Token"
 LOCAL_API_BOOTSTRAP_TOKEN = secrets.token_urlsafe(32)
 CONFIG_ENCRYPTION_ALGORITHM = "aes-256-gcm"
 QUESTION_BANK_SYNC_ALGORITHM = "aes-256-gcm"
+browser_warmup_lock = threading.Lock()
+browser_warmup_state = {
+    "state": "pending",
+    "message": "首次启动正在准备查询/下载浏览器环境，可能会短暂弹出空白 Chrome 窗口，完成后通常不会再出现。",
+    "first_run": True,
+    "completed_modules": {},
+}
+browser_warmup_started = False
 
 
 def _bootstrap_secret_candidates() -> list[Path]:
@@ -972,6 +986,142 @@ def _append_query_debug(event: str, payload: dict | None = None) -> None:
         return
 
 
+def _load_browser_warmup_state_file() -> dict:
+    if not BROWSER_WARMUP_STATE_FILE.exists():
+        return {"modules": {}}
+    try:
+        data = json.loads(BROWSER_WARMUP_STATE_FILE.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    return {"modules": {}}
+
+
+def _save_browser_warmup_state_file(modules: dict) -> None:
+    payload = {
+        "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "modules": modules,
+    }
+    try:
+        BROWSER_WARMUP_STATE_FILE.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def _refresh_browser_warmup_state_from_disk() -> None:
+    persisted = _load_browser_warmup_state_file()
+    modules = persisted.get("modules") or {}
+    complete = bool(modules.get("query") and modules.get("download"))
+    with browser_warmup_lock:
+        browser_warmup_state["completed_modules"] = dict(modules)
+        browser_warmup_state["first_run"] = not complete
+        if complete:
+            browser_warmup_state["state"] = "completed"
+            browser_warmup_state["message"] = "浏览器初始化已完成"
+        else:
+            browser_warmup_state["state"] = "pending"
+            browser_warmup_state["message"] = (
+                "首次启动正在准备查询/下载浏览器环境，可能会短暂弹出空白 Chrome 窗口，完成后通常不会再出现。"
+            )
+
+
+def _update_browser_warmup_state(state: str, message: str, first_run: bool | None = None) -> None:
+    with browser_warmup_lock:
+        browser_warmup_state["state"] = state
+        browser_warmup_state["message"] = message
+        if first_run is not None:
+            browser_warmup_state["first_run"] = bool(first_run)
+
+
+def _warmup_query_browser() -> None:
+    from query_service import StandardQueryService
+
+    svc = StandardQueryService()
+    try:
+        svc._init_selenium()
+    finally:
+        try:
+            svc.shutdown_shared_selenium()
+        except Exception:
+            pass
+
+
+def _warmup_download_browser() -> None:
+    from standard_auto_downloader_core import StandardAutoDownloader
+
+    downloader = StandardAutoDownloader(download_dir=str(DOWNLOADS_DIR))
+    try:
+        downloader._init_selenium(headless=True)
+    finally:
+        try:
+            if downloader._driver is not None:
+                downloader._driver.quit()
+        except Exception:
+            pass
+        downloader._driver = None
+
+
+def start_browser_warmup() -> None:
+    global browser_warmup_started
+
+    _refresh_browser_warmup_state_from_disk()
+    with browser_warmup_lock:
+        if browser_warmup_started:
+            return
+        if browser_warmup_state.get("state") == "completed":
+            return
+        browser_warmup_started = True
+
+    def worker():
+        try:
+            time.sleep(4)
+            persisted = _load_browser_warmup_state_file()
+            modules = dict(persisted.get("modules") or {})
+            _update_browser_warmup_state(
+                "running",
+                "正在初始化浏览器环境，首次可能会短暂弹出空白 Chrome 窗口，完成后通常不会再出现。",
+                first_run=True,
+            )
+
+            warmup_steps = [
+                ("query", "查询", _warmup_query_browser),
+                ("download", "下载", _warmup_download_browser),
+            ]
+            for module_key, module_label, warmup_func in warmup_steps:
+                if modules.get(module_key):
+                    continue
+                _update_browser_warmup_state(
+                    "running",
+                    f"正在初始化{module_label}浏览器环境，首次可能会短暂弹出空白 Chrome 窗口。",
+                    first_run=True,
+                )
+                logger.info("[BROWSER WARMUP] start %s", module_key)
+                warmup_func()
+                modules[module_key] = True
+                _save_browser_warmup_state_file(modules)
+                with browser_warmup_lock:
+                    browser_warmup_state["completed_modules"] = dict(modules)
+                logger.info("[BROWSER WARMUP] completed %s", module_key)
+
+            _update_browser_warmup_state("completed", "浏览器初始化已完成", first_run=False)
+        except Exception as e:
+            logger.warning("[BROWSER WARMUP] failed: %s", e)
+            _update_browser_warmup_state(
+                "error",
+                "浏览器首次初始化未完全完成，首次查询或下载时仍可能短暂弹出空白 Chrome 窗口。",
+                first_run=True,
+            )
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+_refresh_browser_warmup_state_from_disk()
+
+
 # ============ Flask路由 ============
 
 
@@ -1020,6 +1170,8 @@ def get_status():
     config_remaining_seconds = 0
     if _config_expires:
         config_remaining_seconds = max(0, int(_config_expires - time.time()))
+    with browser_warmup_lock:
+        warmup_snapshot = dict(browser_warmup_state)
     return jsonify(
         {
             "success": True,
@@ -1034,6 +1186,9 @@ def get_status():
                 "config_valid": is_config_valid(),
                 "config_expires_in_seconds": config_remaining_seconds,
                 "current_tasks": current_tasks,
+                "browser_warmup_state": warmup_snapshot.get("state"),
+                "browser_warmup_message": warmup_snapshot.get("message"),
+                "browser_warmup_first_run": bool(warmup_snapshot.get("first_run")),
             },
         }
     )
@@ -3135,6 +3290,7 @@ if __name__ == "__main__":
         webbrowser.open(f"http://127.0.0.1:{port}")
 
     threading.Thread(target=open_browser, daemon=True).start()
+    start_browser_warmup()
 
     try:
         from waitress import serve

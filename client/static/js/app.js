@@ -19,6 +19,7 @@ let downloadResults = []; // 存储下载结果用于分页
 let downloadPagination = { page: 1, perPage: 5, total: 0 }; // 下载分页状态
 let broadcasts = []; // 广播消息列表
 let broadcastIndex = 0; // 当前广播索引
+let browserWarmupNoticeShown = false;
 const BROADCAST_STORAGE_KEY = 'broadcast_history';
 const LOCAL_API_HEADER = 'X-Lab-Local-Api-Token';
 const nativeFetch = window.fetch.bind(window);
@@ -222,7 +223,7 @@ function initSmartDropdowns() {
     document.querySelectorAll('select[data-smart-dropdown="1"]').forEach(bindSmartDropdown);
 }
 
-function showToast(message, type = 'info') {
+function showToast(message, type = 'info', durationMs = 2200) {
     if (!message) return;
     const colorMap = {
         success: '#10b981',
@@ -249,7 +250,7 @@ function showToast(message, type = 'info') {
             toast.style.opacity = '0';
             toast.style.transition = 'opacity 0.25s';
             setTimeout(() => toast.remove(), 260);
-        }, 2200);
+        }, durationMs);
     } catch (e) {
         alert(String(message));
     }
@@ -875,6 +876,18 @@ async function loadStatus() {
             if (clientIdEl) clientIdEl.textContent = data.data.client_id.substring(0, 12) + '...';
             if (codeVersionEl) codeVersionEl.textContent = 'linhb112233';
             if (homeUrlEl) homeUrlEl.textContent = 'labmumu.ftir.fun';
+            if (
+                !browserWarmupNoticeShown &&
+                data.data.browser_warmup_first_run &&
+                ['pending', 'running', 'error'].includes(String(data.data.browser_warmup_state || ''))
+            ) {
+                browserWarmupNoticeShown = true;
+                showToast(
+                    data.data.browser_warmup_message || '首次正在初始化浏览器环境，可能会短暂弹出空白 Chrome 窗口，完成后通常不会再出现。',
+                    'info',
+                    7000
+                );
+            }
             // 不再显示服务端地址，服务端只用于心跳
             updateFooterStatus(data.data, 0);
         }
@@ -1737,6 +1750,8 @@ function updateProgress(data) {
         const stageMessage = details.stage_message || '';
         const hasRoundFlag = Object.prototype.hasOwnProperty.call(details, 'reference_round');
         const isReferenceRound = hasRoundFlag ? !!details.reference_round : !!queryCurrentBatchMeta?.isReferenceRound;
+        const roundLabel = isReferenceRound ? '引用轮' : '主轮';
+        const platformValue = String(details.platform || '').trim();
         const latestStatus = latestStatusRaw === 'success'
             ? '成功'
             : latestStatusRaw === 'error'
@@ -1780,11 +1795,32 @@ function updateProgress(data) {
         const focusState = isReferenceRound ? queryRoundProgressState.reference : queryRoundProgressState.main;
         const focusLine3 = focusState?.line3 || '';
         const focusLine4 = focusState?.line4 || '';
-        const detailText = `${mainText}\n${refText}\n${focusLine3}${focusLine4 ? `\n${focusLine4}` : ''}`;
+        const rollingParts = [];
+        rollingParts.push(roundLabel);
+        rollingParts.push(total > 0 ? `${current}/${total}（${percent}%）` : `${percent}%`);
+        rollingParts.push(`成功 ${success}`);
+        rollingParts.push(`失败 ${error}`);
+        rollingParts.push(`跳过 ${skipped}`);
+        if (latestStandard) {
+            rollingParts.push(`当前 ${latestStandard}${latestStatus ? `（${latestStatus}）` : ''}`);
+        }
+        if (platformValue) {
+            rollingParts.push(String(platformValue));
+        }
+        if (stageMessage) {
+            rollingParts.push(stageMessage);
+        } else if (data.message) {
+            rollingParts.push(data.message);
+        }
+        if (etaSeconds > 0) {
+            rollingParts.push(etaText);
+        }
+        const detailText = rollingParts.join(' | ');
 
         if (detailEl) {
             detailEl.textContent = detailText;
-            detailEl.style.cssText = 'font-size: 0.9rem; color: var(--text-primary); margin-top: 0; white-space: pre-line; line-height: 1.5;';
+            detailEl.style.cssText = 'font-size: 0.9rem; color: var(--text-primary); margin-top: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.5;';
+            detailEl.title = detailText;
         }
     } else {
         let statusText = '正在处理中，请稍候，当前动作：';
