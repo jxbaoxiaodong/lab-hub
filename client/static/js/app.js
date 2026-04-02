@@ -876,16 +876,17 @@ async function loadStatus() {
             if (clientIdEl) clientIdEl.textContent = data.data.client_id.substring(0, 12) + '...';
             if (codeVersionEl) codeVersionEl.textContent = 'linhb112233';
             if (homeUrlEl) homeUrlEl.textContent = 'labmumu.ftir.fun';
+            if (String(data.data.browser_warmup_state || '') === 'completed') {
+                document.getElementById('browserWarmupModal')?.remove();
+            }
             if (
                 !browserWarmupNoticeShown &&
                 data.data.browser_warmup_first_run &&
                 ['pending', 'running', 'error'].includes(String(data.data.browser_warmup_state || ''))
             ) {
                 browserWarmupNoticeShown = true;
-                showToast(
-                    data.data.browser_warmup_message || '首次正在初始化浏览器环境，可能会短暂弹出空白 Chrome 窗口，完成后通常不会再出现。',
-                    'info',
-                    7000
+                showBrowserWarmupModal(
+                    data.data.browser_warmup_message || '首次正在初始化浏览器环境，可能会短暂弹出空白 Chrome 窗口，完成后通常不会再出现。'
                 );
             }
             // 不再显示服务端地址，服务端只用于心跳
@@ -2714,6 +2715,44 @@ function showUpgradeModal(message) {
     `;
     
     document.body.appendChild(modal);
+}
+
+function showBrowserWarmupModal(message) {
+    const existing = document.getElementById('browserWarmupModal');
+    if (existing) {
+        const msgEl = existing.querySelector('[data-role="message"]');
+        if (msgEl) msgEl.textContent = message || '首次正在初始化浏览器环境，可能会短暂弹出空白 Chrome 窗口。';
+        return;
+    }
+
+    const modal = document.createElement('div');
+    modal.id = 'browserWarmupModal';
+    modal.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.65); z-index: 9998;
+        display: flex; align-items: center; justify-content: center;
+        padding: 20px;
+    `;
+    modal.innerHTML = `
+        <div style="background: var(--bg-secondary); padding: 1.4rem 1.5rem; border-radius: 12px; max-width: 460px; width: 100%; border: 1px solid rgba(59,130,246,0.25); box-shadow: 0 18px 50px rgba(0,0,0,0.28);">
+            <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.75rem;">首次初始化浏览器环境</div>
+            <div data-role="message" style="font-size: 0.92rem; color: var(--text-secondary); line-height: 1.65; margin-bottom: 1rem;">
+                ${escapeHtml(message || '首次正在初始化浏览器环境，可能会短暂弹出空白 Chrome 窗口。')}
+            </div>
+            <div style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 1rem;">
+                这是自动化浏览器首启预热，完成后通常不会再次出现。如果页面已弹出空白 Chrome，请等待几秒，不需要手动操作。
+            </div>
+            <div style="display:flex; justify-content:flex-end;">
+                <button id="browserWarmupModalClose" style="padding: 0.65rem 1rem; background: #3b82f6; color: #fff; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">
+                    知道了
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    document.getElementById('browserWarmupModalClose')?.addEventListener('click', () => {
+        modal.remove();
+    });
 }
 
 // 显示错误

@@ -29,6 +29,17 @@ DISABLED_DOWNLOAD_SOURCES = {"renren", "wenku_baidu", "doc88", "docin"}
 ENTRY_ONLY_DOWNLOAD_SOURCES = {"mee_hj"}
 
 
+def _decode_subprocess_output(data: bytes) -> str:
+    if not data:
+        return ""
+    for encoding in ("utf-8", "gb18030", "gbk"):
+        try:
+            return data.decode(encoding)
+        except Exception:
+            continue
+    return data.decode("utf-8", errors="ignore")
+
+
 def _get_download_browser_profile_dir() -> Optional[Path]:
     configured = (os.environ.get("LAB_DOWNLOAD_BROWSER_PROFILE_DIR") or "").strip()
     if configured:
@@ -130,15 +141,13 @@ def _get_chrome_version() -> Optional[str]:
         try:
             if not Path(chrome_path).exists():
                 continue
-            # Windows 使用 gbk 编码避免中文乱码
-            kwargs = {"encoding": "gbk", "errors": "ignore"} if sys.platform == "win32" else {"text": True}
             result = subprocess.run(
                 [str(chrome_path), "--version"],
                 capture_output=True,
                 timeout=10,
-                **kwargs
             )
-            output = result.stdout if isinstance(result.stdout, str) else result.stdout.decode("utf-8", errors="ignore")
+            stdout = result.stdout if isinstance(result.stdout, bytes) else str(result.stdout or "").encode("utf-8", errors="ignore")
+            output = _decode_subprocess_output(stdout)
             if result.returncode == 0:
                 match = re.search(r"Chrome[\s/]?(\d+)\.(\d+)\.(\d+)\.(\d+)", output)
                 if match:

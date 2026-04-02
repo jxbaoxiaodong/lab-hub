@@ -27,6 +27,17 @@ PLAYWRIGHT_ENABLED = os.environ.get("LAB_ENABLE_PLAYWRIGHT", "0") == "1"
 PLAYWRIGHT_DISABLED_MESSAGE = "Playwright已默认停用，直接使用Selenium（设置 LAB_ENABLE_PLAYWRIGHT=1 可重新启用）"
 
 
+def _decode_subprocess_output(data: bytes) -> str:
+    if not data:
+        return ""
+    for encoding in ("utf-8", "gb18030", "gbk"):
+        try:
+            return data.decode(encoding)
+        except Exception:
+            continue
+    return data.decode("utf-8", errors="ignore")
+
+
 def _get_query_browser_profile_dir() -> Optional[Path]:
     configured = (os.environ.get("LAB_QUERY_BROWSER_PROFILE_DIR") or "").strip()
     if configured:
@@ -220,24 +231,16 @@ class StandardQueryService:
 
         for chrome_path in chrome_paths:
             try:
-                kwargs = {"capture_output": True, "timeout": 10}
-                if sys.platform == "win32":
-                    kwargs.update(
-                        {
-                            "text": True,
-                            "encoding": "gbk",
-                            "errors": "ignore",
-                        }
-                    )
-                else:
-                    kwargs.update({"text": True})
                 result = subprocess.run(
                     [chrome_path, "--version"],
-                    **kwargs,
+                    capture_output=True,
+                    timeout=10,
                 )
                 if result.returncode == 0:
+                    stdout = result.stdout if isinstance(result.stdout, bytes) else str(result.stdout or "").encode("utf-8", errors="ignore")
+                    output = _decode_subprocess_output(stdout)
                     # 解析版本号，格式如 "Google Chrome 131.0.6789.120"
-                    match = re.search(r"Chrome[\s/]?(\d+)\.(\d+)\.(\d+)\.(\d+)", result.stdout)
+                    match = re.search(r"Chrome[\s/]?(\d+)\.(\d+)\.(\d+)\.(\d+)", output)
                     if match:
                         return f"{match.group(1)}.{match.group(2)}.{match.group(3)}.{match.group(4)}"
             except Exception:

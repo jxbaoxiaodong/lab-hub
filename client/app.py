@@ -168,6 +168,7 @@ browser_warmup_state = {
     "completed_modules": {},
 }
 browser_warmup_started = False
+last_hub_request_error_log = {"message": "", "ts": 0.0}
 
 
 def _bootstrap_secret_candidates() -> list[Path]:
@@ -755,7 +756,7 @@ def hub_request(method, path, data=None):
                 return json.loads(r.stdout)
         except Exception:
             pass
-        print(f"请求失败: {e}")
+        _log_hub_request_error(str(e))
         return {"success": False, "error": str(e)}
 
 
@@ -984,6 +985,18 @@ def _append_query_debug(event: str, payload: dict | None = None) -> None:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
     except Exception:
         return
+
+
+def _log_hub_request_error(message: str) -> None:
+    now = time.time()
+    with browser_warmup_lock:
+        last_message = last_hub_request_error_log.get("message", "")
+        last_ts = float(last_hub_request_error_log.get("ts", 0.0) or 0.0)
+        if message == last_message and (now - last_ts) < 30:
+            return
+        last_hub_request_error_log["message"] = message
+        last_hub_request_error_log["ts"] = now
+    print(f"请求失败: {message}")
 
 
 def _load_browser_warmup_state_file() -> dict:
