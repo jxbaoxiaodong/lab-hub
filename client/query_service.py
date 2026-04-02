@@ -557,6 +557,11 @@ class StandardQueryService:
         options = Options()
         if headless_arg:
             options.add_argument(headless_arg)
+        # 某些 Windows/驱动组合下即便传了 headless 也可能短暂露出窗口，
+        # 这里额外把窗口最小化并挪到屏幕外，尽量避免打扰用户。
+        options.add_argument("--start-minimized")
+        options.add_argument("--window-position=-2400,-2400")
+        options.add_argument("--window-size=1280,960")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
@@ -573,12 +578,29 @@ class StandardQueryService:
             options.binary_location = chrome_binary
         return options
 
+    @staticmethod
+    def _hide_selenium_window(driver):
+        """尽量把自动化浏览器窗口藏起来，避免影响用户。"""
+        if driver is None:
+            return
+
+        for action in (
+            lambda: driver.minimize_window(),
+            lambda: driver.set_window_position(-2400, 0),
+            lambda: driver.set_window_size(1280, 960),
+        ):
+            try:
+                action()
+            except Exception:
+                pass
+
     def _create_selenium_driver(self, service):
         last_error = None
         for headless_arg in ("--headless=new", "--headless"):
             options = self._build_selenium_options(headless_arg=headless_arg)
             try:
                 driver = self._webdriver.Chrome(service=service, options=options)
+                self._hide_selenium_window(driver)
                 try:
                     driver.execute_cdp_cmd(
                         "Page.addScriptToEvaluateOnNewDocument",
@@ -885,6 +907,25 @@ class StandardQueryService:
         """
         return
 
+    @classmethod
+    def shutdown_shared_selenium(cls):
+        """释放共享 Selenium 实例，避免查询结束后残留自动化窗口。"""
+        if cls._shared_driver_lock is None:
+            driver = cls._shared_driver
+            cls._shared_driver = None
+            cls._shared_selenium_init_error = None
+        else:
+            with cls._shared_driver_lock:
+                driver = cls._shared_driver
+                cls._shared_driver = None
+                cls._shared_selenium_init_error = None
+
+        if driver is not None:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+
     def _init_selenium(self):
         """初始化Selenium WebDriver"""
         import threading
@@ -896,6 +937,7 @@ class StandardQueryService:
         # 双重检查锁定：先检查是否已初始化，再决定是否加锁创建
         if StandardQueryService._shared_driver is not None:
             self._driver = StandardQueryService._shared_driver
+            self._hide_selenium_window(self._driver)
             return
         if StandardQueryService._shared_selenium_init_error:
             raise RuntimeError(StandardQueryService._shared_selenium_init_error)
@@ -905,6 +947,7 @@ class StandardQueryService:
             # 再次检查（可能有其他线程刚创建完）
             if StandardQueryService._shared_driver is not None:
                 self._driver = StandardQueryService._shared_driver
+                self._hide_selenium_window(self._driver)
                 return
             if StandardQueryService._shared_selenium_init_error:
                 raise RuntimeError(StandardQueryService._shared_selenium_init_error)
@@ -1131,13 +1174,7 @@ class StandardQueryService:
 
                 if browser_bootstrap_failed:
                     # 清理共享状态，允许下次查询重新初始化
-                    if StandardQueryService._shared_driver:
-                        try:
-                            StandardQueryService._shared_driver.quit()
-                        except Exception:
-                            pass
-                    StandardQueryService._shared_driver = None
-                    StandardQueryService._shared_selenium_init_error = None
+                    StandardQueryService.shutdown_shared_selenium()
 
                     raise RuntimeError(
                         f"{current_platform} 平台浏览器初始化失败，已停止继续切换平台。\n"

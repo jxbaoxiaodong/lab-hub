@@ -404,6 +404,9 @@ hub_state = {
     "hub_url": "",
 }
 
+SERVICE_LOADING_MESSAGE = "服务正在加载中，请稍后再试"
+SERVICE_RECONNECTING_MESSAGE = "服务正在重新连接并刷新配置，请稍后再试"
+
 
 def _save_client_auth_token(token: str):
     global CLIENT_AUTH_TOKEN
@@ -1011,6 +1014,9 @@ def add_no_cache_headers(response):
 @app.route("/api/status")
 def get_status():
     ready, ready_msg = _require_ready()
+    waiting = (not ready) and (
+        ready_msg in {SERVICE_LOADING_MESSAGE, SERVICE_RECONNECTING_MESSAGE}
+    )
     config_remaining_seconds = 0
     if _config_expires:
         config_remaining_seconds = max(0, int(_config_expires - time.time()))
@@ -1024,6 +1030,7 @@ def get_status():
                 "hub_state": hub_state,
                 "service_ready": ready,
                 "service_message": ready_msg if not ready else "就绪",
+                "service_waiting": waiting,
                 "config_valid": is_config_valid(),
                 "config_expires_in_seconds": config_remaining_seconds,
                 "current_tasks": current_tasks,
@@ -1376,9 +1383,7 @@ _refresh_question_bank_manifest()
 
 
 def _question_bank_feature_available():
-    if not is_config_valid():
-        return False, "服务暂不可用，请联系管理员"
-    return True, ""
+    return _require_ready()
 
 
 def _display_text(value, fallback: str = "") -> str:
@@ -2148,6 +2153,7 @@ def do_query():
 
     def task_thread():
         query_run_id = secrets.token_hex(6)
+        query_svc = None
         try:
             print(f"[QUERY TASK] 任务线程启动，输入数量: {len(standards)}", flush=True)
             _append_query_debug(
@@ -2663,6 +2669,15 @@ def do_query():
                 "query_fatal_error",
                 {"run_id": query_run_id, "error": str(e)},
             )
+        finally:
+            try:
+                if query_svc is not None:
+                    query_svc.shutdown_shared_selenium()
+            except Exception as cleanup_error:
+                _append_query_debug(
+                    "query_browser_cleanup_error",
+                    {"run_id": query_run_id, "error": str(cleanup_error)},
+                )
 
     threading.Thread(target=task_thread, daemon=True).start()
     return jsonify({"success": True, "message": "任务已启动"})
@@ -3067,7 +3082,19 @@ def _require_ready():
         return False, "服务暂不可用，请联系管理员（设备ID异常）"
     if hub_state.get("state") == "banned":
         return False, "服务暂不可用，请联系管理员"
+    if hub_state.get("state") == "connecting":
+        return False, SERVICE_LOADING_MESSAGE
+    if _decrypted_config is None or _config_key is None:
+        if hub_state.get("state") in {"connecting", "error", "ready"}:
+            return False, SERVICE_LOADING_MESSAGE
+        return False, "服务暂不可用，请联系管理员"
+    if _config_expires and time.time() > _config_expires:
+        if hub_state.get("state") in {"connecting", "error", "ready"}:
+            return False, SERVICE_RECONNECTING_MESSAGE
+        return False, "服务暂不可用，请联系管理员"
     if not is_config_valid():
+        if hub_state.get("state") in {"connecting", "error"}:
+            return False, SERVICE_LOADING_MESSAGE
         return False, "服务暂不可用，请联系管理员"
     return True, ""
 

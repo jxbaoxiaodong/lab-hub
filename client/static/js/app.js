@@ -805,6 +805,7 @@ function buildServiceStatusText(statusData) {
     const hubState = statusData?.hub_state || {};
     const serviceReady = Boolean(statusData?.service_ready);
     const serviceMessage = statusData?.service_message || '';
+    const serviceWaiting = Boolean(statusData?.service_waiting);
     const configValid = statusData?.config_valid !== false;
     const isDeviceIdConflict = hubState?.state === 'device_id_conflict' || serviceMessage.includes('设备ID异常');
 
@@ -815,19 +816,21 @@ function buildServiceStatusText(statusData) {
         };
     }
 
-    if (!serviceReady || !configValid) {
+    if (hubState.state === 'connecting' || serviceWaiting) {
         return {
-            text: '服务暂不可用，请联系管理员',
-            color: '#ef4444'
-        };
-    }
-    if (hubState.state === 'connecting') {
-        return {
-            text: '连接中',
+            text: serviceMessage || '服务正在加载中，请稍后再试',
             color: '#f59e0b'
         };
     }
-    if (hubState.state === 'error') {
+
+    if (hubState.state === 'error' && !serviceReady) {
+        return {
+            text: serviceMessage || '服务正在重新连接，请稍后再试',
+            color: '#f59e0b'
+        };
+    }
+
+    if (!serviceReady || !configValid) {
         return {
             text: serviceMessage || '服务暂不可用，请联系管理员',
             color: '#ef4444'
