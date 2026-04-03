@@ -3310,7 +3310,7 @@ def start_bootstrap():
                     retry_delay = 10  # 秒
 
                     while True:
-                        time.sleep(30)
+                        time.sleep(5)
                         try:
                             resp = hub_request(
                                 "POST",

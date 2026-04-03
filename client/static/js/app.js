@@ -863,6 +863,31 @@ function updateFooterStatus(statusData, runningCount = 0) {
     }
 }
 
+const SERVICE_NOT_READY_MESSAGE = '服务未就绪，请等待连接正常，右下角显示就绪后再尝试';
+
+async function ensureServiceReadyOrWarn() {
+    try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        if (!data.success || !data.data) {
+            showToast(SERVICE_NOT_READY_MESSAGE, 'info', 2800);
+            return false;
+        }
+
+        updateFooterStatus(data.data, 0);
+        const serviceStatus = buildServiceStatusText(data.data);
+        if (serviceStatus.text !== '就绪') {
+            showToast(SERVICE_NOT_READY_MESSAGE, 'info', 2800);
+            return false;
+        }
+
+        return true;
+    } catch (e) {
+        showToast(SERVICE_NOT_READY_MESSAGE, 'info', 2800);
+        return false;
+    }
+}
+
 // 加载状态
 async function loadStatus() {
     try {
@@ -900,6 +925,10 @@ async function loadStatus() {
 
 // 开始提取
 async function startExtract() {
+    if (!(await ensureServiceReadyOrWarn())) {
+        return;
+    }
+
     // 优先使用全局变量中的文件对象
     let file = window.selectedFileForExtract;
     let fileInput = null;
@@ -1228,6 +1257,10 @@ function getCurrentQueryKnownStandards(results) {
 }
 
 async function submitQueryBatch(standardList, options = {}) {
+    if (!(await ensureServiceReadyOrWarn())) {
+        return;
+    }
+
     const { isReferenceRound = false, roundLabel = '' } = options;
     if (!standardList || standardList.length === 0) {
         alert('未找到有效的标准号');
@@ -1335,6 +1368,10 @@ function clearResults() {
 
 // 开始查询
 async function startQuery() {
+    if (!(await ensureServiceReadyOrWarn())) {
+        return;
+    }
+
     const input = document.getElementById('queryInput');
     if (!input) {
         alert('查询输入框未找到');
@@ -1417,6 +1454,10 @@ async function startQuery() {
 
 // 开始下载
 async function startDownload() {
+    if (!(await ensureServiceReadyOrWarn())) {
+        return;
+    }
+
     const input = document.getElementById('downloadInput');
     if (!input) {
         alert('下载输入框未找到');
@@ -1518,6 +1559,10 @@ function toggleTechTaskList() {
 window.toggleTechTaskList = toggleTechTaskList;
 
 async function createTechFileTasks() {
+    if (!(await ensureServiceReadyOrWarn())) {
+        return;
+    }
+
     const input = document.getElementById('techFileInput');
     const raw = (input?.value || '').trim();
     if (!raw) {
