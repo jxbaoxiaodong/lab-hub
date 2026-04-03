@@ -48,6 +48,10 @@
                         <span class="nav-icon">📝</span>
                         <span class="nav-text">在线题库</span>
                     </a>
+                    <a href="#" class="nav-item" data-section="news" onclick="showSection('news')">
+                        <span class="nav-icon">📰</span>
+                        <span class="nav-text">每日资讯</span>
+                    </a>
                     <a href="#" class="nav-item" data-section="developing" onclick="showSection('developing')">
                         <span class="nav-icon">🚧</span>
                         <span class="nav-text">开发中</span>
@@ -282,6 +286,37 @@
                     </div>
 
                     <div id="questionBankContainer" style="margin-top: 1rem;"></div>
+                </div>
+            </div>
+            </div>
+
+            <!-- 每日资讯 -->
+            <div id="section-news" class="section" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon" style="background: rgba(16, 185, 129, 0.1);">📰</div>
+                    <div>
+                        <div class="card-title">每日资讯</div>
+                        <div class="card-subtitle">检测、计量、认证相关内容每日更新</div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="news-layout">
+                        <div class="news-intro">
+                            <h3>关注公众号，获取每日新内容</h3>
+                            <p>每天更新标准动态、行业通知、案例拆解和工具更新说明，便于你第一时间掌握关键信息。</p>
+                            <p>扫码关注后，可在公众号中直接查看最新推送，并获取使用答疑与功能预告。</p>
+                            <div class="news-tags">
+                                <span class="news-tag">标准动态</span>
+                                <span class="news-tag">认证资讯</span>
+                                <span class="news-tag">工具更新</span>
+                            </div>
+                        </div>
+                        <div class="news-qrcode-wrap">
+                            <img class="news-qrcode" src="/static/images/gongzhonghao.jpg" alt="公众号二维码">
+                            <div class="news-qrcode-tip">微信扫码关注公众号</div>
+                        </div>
+                    </div>
                 </div>
             </div>
             </div>

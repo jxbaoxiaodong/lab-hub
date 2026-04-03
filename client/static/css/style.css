@@ -192,6 +192,81 @@ body {
 .card-subtitle { font-size: 0.875rem; color: var(--text-secondary); }
 .card-body { padding: 1.25rem; }
 
+/* 每日资讯 */
+.news-layout {
+    display: flex;
+    gap: 1.2rem;
+    align-items: stretch;
+}
+
+.news-intro {
+    flex: 1;
+    padding: 1rem;
+    border: 1px solid rgba(16, 185, 129, 0.22);
+    border-radius: 12px;
+    background: rgba(16, 185, 129, 0.08);
+}
+
+.news-intro h3 {
+    font-size: 1rem;
+    margin-bottom: 0.6rem;
+}
+
+.news-intro p {
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.55rem;
+    line-height: 1.65;
+}
+
+.news-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 0.7rem;
+}
+
+.news-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    color: #6ee7b7;
+    border: 1px solid rgba(110, 231, 183, 0.3);
+    background: rgba(16, 185, 129, 0.12);
+}
+
+.news-qrcode-wrap {
+    width: 220px;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.9rem;
+    background: var(--bg-primary);
+    text-align: center;
+}
+
+.news-qrcode {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #fff;
+}
+
+.news-qrcode-tip {
+    margin-top: 0.6rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+@media (max-width: 768px) {
+    .news-layout { flex-direction: column; }
+    .news-qrcode-wrap { width: 100%; max-width: 280px; margin: 0 auto; }
+}
+
 /* 表单元素 */
 .form-group { margin-bottom: 1rem; }
 
@@ -845,4 +920,3 @@ textarea { resize: vertical; min-height: 100px; }
     margin-right: 12px;
     flex-shrink: 0;
 }
-
