@@ -193,6 +193,7 @@ from flask import Flask, request, jsonify, send_from_directory, make_response
 TECH_TASKS_FILE = CACHE_DIR / "tech_file_tasks.json"
 TECH_TASKS_ROOT = DOWNLOADS_DIR / "tech_file_tasks"
 TECH_TASKS_ROOT.mkdir(exist_ok=True)
+LOCAL_MESSAGE_INBOX_FILE = CACHE_DIR / "message_inbox.json"
 
 # 配置
 # 客户端必须使用公网 Hub（用于分发），禁止切换到本地地址。
@@ -527,6 +528,63 @@ def _safe_upload_filename(raw_name: str) -> str:
     if not stem:
         stem = f"upload_{int(time.time())}"
     return f"{stem}{suffix}"
+
+
+def _load_local_message_inbox() -> list:
+    if not LOCAL_MESSAGE_INBOX_FILE.exists():
+        return []
+    try:
+        data = json.loads(LOCAL_MESSAGE_INBOX_FILE.read_text(encoding="utf-8"))
+        if isinstance(data, list):
+            return data
+    except Exception:
+        pass
+    return []
+
+
+def _save_local_message_inbox(messages: list) -> None:
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        LOCAL_MESSAGE_INBOX_FILE.write_text(
+            json.dumps(messages, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def _merge_local_message_inbox(
+    existing_messages: list, incoming_messages: list, deleted_broadcasts: list | None = None
+) -> list:
+    merged = []
+    seen_ids = set()
+    deleted_ids = {
+        str(item).strip()
+        for item in (deleted_broadcasts or [])
+        if str(item).strip()
+    }
+
+    def _append(msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        msg_id = str(msg.get("id") or "").strip()
+        if not msg_id or msg_id in seen_ids:
+            return
+        broadcast_id = str(msg.get("broadcast_id") or "").strip()
+        if broadcast_id and broadcast_id in deleted_ids:
+            return
+        if msg_id in deleted_ids:
+            return
+        seen_ids.add(msg_id)
+        merged.append(msg)
+
+    for msg in existing_messages or []:
+        _append(msg)
+    for msg in incoming_messages or []:
+        _append(msg)
+
+    # 保留最近 200 条，避免本地 inbox 无限增长。
+    return merged[-200:]
 
 
 @app.before_request
@@ -3105,6 +3163,8 @@ def handle_messages():
         )
         return jsonify(resp)
     else:
+        cached_messages = _load_local_message_inbox()
+
         # 前端轮询获取消息，明确指定获取消息
         qb_manifest = _load_question_bank_manifest()
         resp = hub_request(
@@ -3121,6 +3181,13 @@ def handle_messages():
         )
         if resp.get("success"):
             data = resp.get("data", {})
+            deleted_broadcasts = data.get("deleted_broadcasts", [])
+            merged_messages = _merge_local_message_inbox(
+                cached_messages,
+                data.get("messages", []),
+                deleted_broadcasts,
+            )
+            _save_local_message_inbox(merged_messages)
 
             # 接收新密钥续期
             new_key = data.get("config_key")
@@ -3137,8 +3204,8 @@ def handle_messages():
             return jsonify(
                 {
                     "success": True,
-                    "data": data.get("messages", []),
-                    "deleted_broadcasts": data.get("deleted_broadcasts", []),
+                    "data": merged_messages,
+                    "deleted_broadcasts": deleted_broadcasts,
                 }
             )
         elif resp.get("duplicate_id"):
@@ -3151,7 +3218,7 @@ def handle_messages():
             return jsonify(
                 {"success": False, "banned": True, "reason": resp.get("reason")}
             )
-        return jsonify({"success": True, "data": [], "deleted_broadcasts": []})
+        return jsonify({"success": True, "data": cached_messages, "deleted_broadcasts": []})
 
 
 # ============ 初始化 ============
