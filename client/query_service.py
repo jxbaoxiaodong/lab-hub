@@ -24,6 +24,7 @@ from dataclasses import dataclass, asdict
 logger = logging.getLogger(__name__)
 ALLOW_INSECURE_TLS = os.environ.get("LAB_ALLOW_INSECURE_TLS", "0") == "1"
 PLAYWRIGHT_ENABLED = os.environ.get("LAB_ENABLE_PLAYWRIGHT", "0") == "1"
+LOCK_CHROME_UPDATE = os.environ.get("LAB_LOCK_CHROME_UPDATE", "1") == "1"
 PLAYWRIGHT_DISABLED_MESSAGE = "Playwright已默认停用，直接使用Selenium（设置 LAB_ENABLE_PLAYWRIGHT=1 可重新启用）"
 
 
@@ -215,6 +216,7 @@ class StandardQueryService:
     _shared_browser_lock = None
     _shared_playwright_init_error = None
     _shared_selenium_init_error = None
+    _chrome_update_lock_attempted = False
 
     # 国内镜像配置
     CHROMEDRIVER_MIRRORS = [
@@ -570,6 +572,62 @@ class StandardQueryService:
             "unknown error: cannot find",
         ]
         return any(marker in text for marker in markers)
+
+    @staticmethod
+    def _is_driver_version_mismatch_error(error: Exception) -> bool:
+        text = str(error or "").lower()
+        markers = [
+            "this version of chromedriver only supports",
+            "session not created",
+            "chrome version",
+            "only supports chrome version",
+        ]
+        return any(marker in text for marker in markers)
+
+    @classmethod
+    def _apply_windows_chrome_update_lock_best_effort(cls):
+        """尽力锁定 Chrome 自动更新（Windows, 无管理员权限场景优先 HKCU）。"""
+        if sys.platform != "win32" or not LOCK_CHROME_UPDATE:
+            return
+        if cls._chrome_update_lock_attempted:
+            return
+        cls._chrome_update_lock_attempted = True
+
+        try:
+            import winreg
+        except Exception as e:
+            logger.info("Chrome 更新锁定跳过（winreg 不可用）: %s", e)
+            return
+
+        update_guid = "{8A69D345-D564-463c-AFF1-A69D9E530F96}"
+        policy_values = {
+            "UpdateDefault": 0,
+            "AutoUpdateCheckPeriodMinutes": 0,
+            "DisableAutoUpdateChecksCheckboxValue": 1,
+            f"Update{update_guid}": 0,
+            f"Install{update_guid}": 0,
+        }
+
+        base_key = r"Software\Policies\Google\Update"
+        for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            try:
+                key = winreg.CreateKeyEx(hive, base_key, 0, winreg.KEY_SET_VALUE)
+                try:
+                    for name, value in policy_values.items():
+                        winreg.SetValueEx(key, name, 0, winreg.REG_DWORD, int(value))
+                finally:
+                    winreg.CloseKey(key)
+                logger.info(
+                    "Chrome 自动更新策略已写入 %s\\%s",
+                    "HKCU" if hive == winreg.HKEY_CURRENT_USER else "HKLM",
+                    base_key,
+                )
+            except Exception as e:
+                logger.info(
+                    "Chrome 更新锁定写入失败（%s）: %s",
+                    "HKCU" if hive == winreg.HKEY_CURRENT_USER else "HKLM",
+                    e,
+                )
 
     def _build_selenium_options(self, headless_arg: Optional[str] = "--headless=new"):
         from selenium.webdriver.chrome.options import Options
@@ -1023,6 +1081,7 @@ class StandardQueryService:
             from selenium.webdriver.chrome.service import Service
             import os
 
+        self._apply_windows_chrome_update_lock_best_effort()
         self._report(5, 100, "检测Chrome浏览器...", {})
 
         try:
@@ -1036,6 +1095,7 @@ class StandardQueryService:
         local_paths = self._chromedriver_candidates(base_dir)
 
         last_local_error = None
+        mismatch_detected = False
         for path in local_paths:
             if path.exists():
                 if sys.platform == "win32" and path.suffix.lower() != ".exe":
@@ -1050,13 +1110,17 @@ class StandardQueryService:
                     break
                 except Exception as e:
                     last_local_error = e
+                    mismatch_detected = mismatch_detected or self._is_driver_version_mismatch_error(e)
                     logger.warning(f"本地ChromeDriver {path} 初始化失败: {e}")
 
         if self._driver is None:
             # 本地路径都失败，使用自定义下载器从国内镜像下载
             from selenium.webdriver.chrome.service import Service as ChromeService
 
-            self._report(10, 100, "Preparing required component ChromeDriver...", {})
+            if mismatch_detected:
+                self._report(10, 100, "检测到浏览器已更新，正在后台更新驱动...", {})
+            else:
+                self._report(10, 100, "正在后台准备 ChromeDriver...", {})
 
             # 1. 获取本机Chrome版本
             chrome_version = self._get_chrome_version()
@@ -1070,7 +1134,7 @@ class StandardQueryService:
                     "3. 或手动下载chromedriver并放到drivers/目录"
                 )
 
-            self._report(11, 100, f"Detected Chrome version: {chrome_version}", {})
+            self._report(11, 100, f"检测到 Chrome 版本: {chrome_version}", {})
 
             # 2. 获取匹配的ChromeDriver版本
             matched_version = self._get_latest_matching_version(chrome_version)
@@ -1081,7 +1145,7 @@ class StandardQueryService:
                     "请确保Chrome版本较新，或手动下载chromedriver并放到drivers/目录"
                 )
 
-            self._report(12, 100, f"ChromeDriver version: {matched_version}", {})
+            self._report(12, 100, f"匹配驱动版本: {matched_version}", {})
 
             # 3. 从npmmirror下载
             driver_path = self._download_chromedriver_npmirror(matched_version)
