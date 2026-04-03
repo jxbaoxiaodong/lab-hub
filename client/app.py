@@ -13,13 +13,33 @@ from pathlib import Path
 SOURCE_DIR = Path(__file__).resolve().parent
 
 # 目录设置（提前到日志配置之前）
-# BASE_DIR: 运行期可写目录（源码目录 / exe 所在目录）
+# BASE_DIR: 程序目录（源码目录 / exe 所在目录），用于资源定位
 # BUNDLED_DIR: PyInstaller onefile 解包后的资源目录（源码模式下等于 SOURCE_DIR）
 if getattr(sys, "frozen", False):
     BASE_DIR = Path(sys.executable).resolve().parent
 else:
     BASE_DIR = SOURCE_DIR
 BUNDLED_DIR = Path(getattr(sys, "_MEIPASS", SOURCE_DIR)).resolve()
+
+
+def _default_client_data_dir() -> Path:
+    """
+    统一跨平台客户端数据目录，避免放在下载目录随安装包被误删。
+    可通过环境变量 LAB_CLIENT_DATA_DIR 覆盖。
+    """
+    custom = (os.environ.get("LAB_CLIENT_DATA_DIR") or "").strip()
+    if custom:
+        return Path(custom).expanduser().resolve()
+
+    home = Path.home()
+    if sys.platform == "win32":
+        base = (os.environ.get("LOCALAPPDATA") or "").strip()
+        if base:
+            return Path(base) / "JingxiLabClient"
+        return home / "AppData" / "Local" / "JingxiLabClient"
+    if sys.platform == "darwin":
+        return home / "Library" / "Application Support" / "JingxiLabClient"
+    return home / ".local" / "share" / "jingxi-lab-client"
 
 
 def _resolve_resource_dir(dirname: str, required_file: str | None = None) -> Path:
@@ -45,17 +65,44 @@ def _resolve_resource_dir(dirname: str, required_file: str | None = None) -> Pat
     return BASE_DIR / dirname
 
 
-CACHE_DIR = BASE_DIR / "cache"
-DOWNLOADS_DIR = BASE_DIR / "downloads"
+DATA_DIR = _default_client_data_dir()
+CACHE_DIR = DATA_DIR / "cache"
+DOWNLOADS_DIR = DATA_DIR / "downloads"
 STATIC_DIR = _resolve_resource_dir("static", "index_offline.html")
-QUESTION_BANKS_DIR = BASE_DIR / "question_banks"
+QUESTION_BANKS_DIR = DATA_DIR / "question_banks"
 LOG_FILE = CACHE_DIR / "client.log"
 BROWSER_PROFILE_QUERY_DIR = CACHE_DIR / "browser_profile_query"
 BROWSER_PROFILE_DOWNLOAD_DIR = CACHE_DIR / "browser_profile_download"
 BROWSER_WARMUP_STATE_FILE = CACHE_DIR / "browser_warmup_state.json"
 
+
+def _migrate_legacy_runtime_dirs() -> None:
+    """
+    兼容旧版本：若历史数据仍在 BASE_DIR 下，且新目录为空，则自动迁移一次。
+    """
+    legacy_pairs = [
+        (BASE_DIR / "cache", CACHE_DIR),
+        (BASE_DIR / "downloads", DOWNLOADS_DIR),
+        (BASE_DIR / "question_banks", QUESTION_BANKS_DIR),
+    ]
+    for old_dir, new_dir in legacy_pairs:
+        try:
+            if not old_dir.exists() or old_dir.resolve() == new_dir.resolve():
+                continue
+            if new_dir.exists() and any(new_dir.iterdir()):
+                continue
+            import shutil
+            new_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(old_dir), str(new_dir))
+            print(f"[迁移] 已迁移目录: {old_dir} -> {new_dir}")
+        except Exception as e:
+            print(f"[迁移] 目录迁移失败: {old_dir} -> {new_dir}, {e}")
+
+
+_migrate_legacy_runtime_dirs()
+
 for d in [CACHE_DIR, DOWNLOADS_DIR, QUESTION_BANKS_DIR, BROWSER_PROFILE_QUERY_DIR, BROWSER_PROFILE_DOWNLOAD_DIR]:
-    d.mkdir(exist_ok=True)
+    d.mkdir(parents=True, exist_ok=True)
 
 os.environ.setdefault("LAB_QUERY_BROWSER_PROFILE_DIR", str(BROWSER_PROFILE_QUERY_DIR))
 os.environ.setdefault("LAB_DOWNLOAD_BROWSER_PROFILE_DIR", str(BROWSER_PROFILE_DOWNLOAD_DIR))
@@ -74,6 +121,7 @@ logger.info("=" * 50)
 logger.info("客户端启动")
 logger.info("=" * 50)
 logger.info("BASE_DIR: %s", BASE_DIR)
+logger.info("DATA_DIR: %s", DATA_DIR)
 logger.info("BUNDLED_DIR: %s", BUNDLED_DIR)
 logger.info("STATIC_DIR: %s", STATIC_DIR)
 
@@ -518,6 +566,19 @@ QUERY_PLATFORMS = [
     "xiamen",
     "shenzhen",  # 深圳平台响应慢，放最后
 ]
+_query_platform_rr_lock = threading.Lock()
+_query_platform_rr_index = 0
+
+
+def _allocate_query_start_platform_index() -> int:
+    """为每次新查询任务分配一个轮流起点。"""
+    global _query_platform_rr_index
+    with _query_platform_rr_lock:
+        if not QUERY_PLATFORMS:
+            return 0
+        start_idx = _query_platform_rr_index % len(QUERY_PLATFORMS)
+        _query_platform_rr_index = (_query_platform_rr_index + 1) % len(QUERY_PLATFORMS)
+        return start_idx
 
 # 其他技术文件任务（持久化）
 tech_task_lock = threading.Lock()
@@ -2359,6 +2420,15 @@ def do_query():
             total = len(standards)
             started_at = time.time()
             query_svc = get_query_service(progress_callback)
+            query_start_platform_index = _allocate_query_start_platform_index()
+            _append_query_debug(
+                "query_platform_rotation_allocated",
+                {
+                    "run_id": query_run_id,
+                    "start_index": query_start_platform_index,
+                    "start_platform": QUERY_PLATFORMS[query_start_platform_index] if QUERY_PLATFORMS else "",
+                },
+            )
 
             for i, std in enumerate(standards):
                 if current_tasks["query"].get("run_id") != query_run_id:
@@ -2447,8 +2517,10 @@ def do_query():
                         )
                         continue
 
-                # 轮流使用不同平台
-                platform = QUERY_PLATFORMS[i % len(QUERY_PLATFORMS)]
+                # 轮流使用不同平台（任务级轮换起点 + 任务内顺序轮询）
+                platform = QUERY_PLATFORMS[
+                    (query_start_platform_index + i) % len(QUERY_PLATFORMS)
+                ]
                 platform_names = {
                     "hunan": "湖南平台",
                     "shanxi": "陕西平台",
@@ -3085,9 +3157,8 @@ def handle_messages():
 # ============ 初始化 ============
 def _write_start_error(message: str):
     try:
-        cache_dir = Path(__file__).resolve().parent / "cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        (cache_dir / "last_start_error.txt").write_text(message, encoding="utf-8")
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        (CACHE_DIR / "last_start_error.txt").write_text(message, encoding="utf-8")
     except Exception:
         pass
 
@@ -3289,9 +3360,8 @@ if __name__ == "__main__":
     sock.close()
 
     try:
-        cache_dir = BASE_DIR / "cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        (cache_dir / "client_port.txt").write_text(str(port), encoding="utf-8")
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        (CACHE_DIR / "client_port.txt").write_text(str(port), encoding="utf-8")
     except Exception:
         pass
 
