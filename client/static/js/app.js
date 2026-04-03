@@ -1085,9 +1085,27 @@ function collectReferenceStandards(results, knownStandards) {
     return { collected, excluded };
 }
 
+function sanitizeQueryErrorMessage(rawMessage) {
+    const text = String(rawMessage || '').toLowerCase();
+    if (!text) return '';
+
+    const formatKeywords = ['格式', 'invalid', '不合法', '格式错误', '标准号错误', '编号错误'];
+    if (formatKeywords.some(k => text.includes(k))) {
+        return '标准号格式不正确';
+    }
+
+    const noResultKeywords = ['无结果', '未找到', 'not found', 'no result', '查无', '不存在'];
+    if (noResultKeywords.some(k => text.includes(k))) {
+        return '查询无结果';
+    }
+
+    return '站点不可用';
+}
+
 function appendQueryExportRows(result, meta = {}) {
     const batchLabel = meta.label || '待测标准';
     const roundType = meta.isReferenceRound ? '引用标准' : '待测标准';
+    const queryTime = new Date().toLocaleString('zh-CN', { hour12: false });
 
     (result || []).forEach(item => {
         const baseRow = {
@@ -1107,8 +1125,9 @@ function appendQueryExportRows(result, meta = {}) {
             reference_basis: '',
             standard_summary: '',
             resource: '',
+            query_time: queryTime,
             status: item.status || '',
-            error: item.error || item.message || '',
+            error: sanitizeQueryErrorMessage(item.error || item.message || ''),
             note: batchLabel
         };
 
@@ -1281,8 +1300,8 @@ function exportQueryCSV() {
         return;
     }
 
-    // 构建CSV内容 - 新格式：输入关键词,提取标准号,标准编号,中文名,英文名,状态,发布日期,实施日期,废止日期,采用标准,引用标准,被替代标准,替代标准,参考依据,标准摘要,来源,查询状态,备注,错误信息
-    let csv = '输入关键词,提取标准号,标准编号,中文名,英文名,状态,发布日期,实施日期,废止日期,采用标准,引用标准,被替代标准,替代标准,参考依据,标准摘要,来源,查询状态,备注,错误信息\n';
+    // 构建CSV内容 - 新格式：输入关键词,提取标准号,标准编号,中文名,英文名,状态,发布日期,实施日期,废止日期,采用标准,引用标准,被替代标准,替代标准,参考依据,标准摘要,来源,查询时间,查询状态,备注,错误信息
+    let csv = '输入关键词,提取标准号,标准编号,中文名,英文名,状态,发布日期,实施日期,废止日期,采用标准,引用标准,被替代标准,替代标准,参考依据,标准摘要,来源,查询时间,查询状态,备注,错误信息\n';
     
     queryExportRows.forEach(item => {
         const inputKeyword = item.input_keyword || '';
@@ -1291,7 +1310,7 @@ function exportQueryCSV() {
         const errorMsg = item.error || '';
         const note = item.note || '';
 
-        csv += `"${inputKeyword.replace(/"/g, '""')}","${extractedStandard.replace(/"/g, '""')}","${(item.standard_number || '').replace(/"/g, '""')}","${(item.chinese_name || '').replace(/"/g, '""')}","${(item.english_name || '').replace(/"/g, '""')}","${item.standard_status || ''}","${item.release_date || ''}","${item.implementation_date || ''}","${item.cancellation_date || ''}","${(item.adopt_standard || '').replace(/"/g, '""')}","${(item.reference_standard || '').replace(/"/g, '""')}","${(item.replaced_standard || '').replace(/"/g, '""')}","${(item.replacing_standard || '').replace(/"/g, '""')}","${(item.reference_basis || '').replace(/"/g, '""')}","${(item.standard_summary || '').replace(/"/g, '""')}","${item.resource || ''}","${status}","${note.replace(/"/g, '""')}","${errorMsg.replace(/"/g, '""')}"\n`;
+        csv += `"${inputKeyword.replace(/"/g, '""')}","${extractedStandard.replace(/"/g, '""')}","${(item.standard_number || '').replace(/"/g, '""')}","${(item.chinese_name || '').replace(/"/g, '""')}","${(item.english_name || '').replace(/"/g, '""')}","${item.standard_status || ''}","${item.release_date || ''}","${item.implementation_date || ''}","${item.cancellation_date || ''}","${(item.adopt_standard || '').replace(/"/g, '""')}","${(item.reference_standard || '').replace(/"/g, '""')}","${(item.replaced_standard || '').replace(/"/g, '""')}","${(item.replacing_standard || '').replace(/"/g, '""')}","${(item.reference_basis || '').replace(/"/g, '""')}","${(item.standard_summary || '').replace(/"/g, '""')}","${item.resource || ''}","${(item.query_time || '').replace(/"/g, '""')}","${status}","${note.replace(/"/g, '""')}","${errorMsg.replace(/"/g, '""')}"\n`;
     });
 
     // 下载
