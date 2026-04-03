@@ -560,7 +560,6 @@ class StandardQueryService:
         text = str(error or "").lower()
         markers = [
             "playwright浏览器",
-            "chrome",
             "chromedriver",
             "session not created",
             "cannot find chrome binary",
@@ -593,6 +592,9 @@ class StandardQueryService:
         options.add_argument("--disable-session-crashed-bubble")
         options.add_argument("--disable-infobars")
         options.add_argument("--disable-extensions")
+        # 强制直连，避免系统代理异常（如 127.0.0.1:7897）导致查询站点不可达。
+        options.add_argument("--proxy-server=direct://")
+        options.add_argument("--proxy-bypass-list=*")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
@@ -1199,6 +1201,7 @@ class StandardQueryService:
         current_platform = platform
         current_query = standard_number
         relaxed_query_used = False
+        bootstrap_errors = []
 
         try:
             while True:
@@ -1212,7 +1215,9 @@ class StandardQueryService:
                             current_query, current_platform
                         )
                     except Exception as e:
-                        browser_bootstrap_failed = browser_bootstrap_failed or self._is_browser_bootstrap_error(e)
+                        if self._is_browser_bootstrap_error(e):
+                            browser_bootstrap_failed = True
+                            bootstrap_errors.append(("playwright", current_platform, str(e)))
                         logger.warning(f"Playwright查询失败，尝试Selenium: {e}")
 
                 # 回退到Selenium
@@ -1228,16 +1233,49 @@ class StandardQueryService:
                         )
                         return result
                     except Exception as e:
-                        browser_bootstrap_failed = browser_bootstrap_failed or self._is_browser_bootstrap_error(e)
+                        if self._is_browser_bootstrap_error(e):
+                            browser_bootstrap_failed = True
+                            bootstrap_errors.append(("selenium", current_platform, str(e)))
                         logger.error(f"Selenium查询失败: {e}")
 
                 if browser_bootstrap_failed:
                     # 清理共享状态，允许下次查询重新初始化
                     StandardQueryService.shutdown_shared_selenium()
 
+                    if auto_switch:
+                        tried_platforms.append(current_platform)
+                        available = [
+                            p for p in self.query_platforms.keys() if p not in tried_platforms
+                        ]
+                        if available:
+                            next_platform = available[0]
+                            logger.warning(
+                                "平台 %s 浏览器初始化失败，切换到 %s 继续尝试",
+                                current_platform,
+                                next_platform,
+                            )
+                            self._report(
+                                0,
+                                100,
+                                f"源 {current_platform} 浏览器初始化失败，切换到 {next_platform}...",
+                                {
+                                    "platform": current_platform,
+                                    "next_platform": next_platform,
+                                },
+                            )
+                            current_platform = next_platform
+                            continue
+
+                    last_engine, last_platform, last_error = (
+                        bootstrap_errors[-1]
+                        if bootstrap_errors
+                        else ("unknown", current_platform, "unknown")
+                    )
                     raise RuntimeError(
-                        f"{current_platform} 平台浏览器初始化失败，已停止继续切换平台。\n"
-                        "请检查 Windows 虚拟机中的 Chrome、ChromeDriver 和 Playwright 浏览器是否完整。"
+                        "浏览器初始化失败，无法继续查询。\n"
+                        f"最后失败平台: {last_platform}（{last_engine}）\n"
+                        f"错误详情: {last_error}\n"
+                        "请检查 Chrome、ChromeDriver 与 Playwright 浏览器是否完整。"
                     )
 
                 if not auto_switch:
