@@ -839,7 +839,7 @@ function buildServiceStatusText(statusData) {
     }
     if (hubState.state === 'banned') {
         return {
-            text: '服务暂不可用，请联系管理员',
+            text: serviceMessage || '您的客户端授权已停用，请联系管理员。',
             color: '#ef4444'
         };
     }

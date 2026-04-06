@@ -209,6 +209,7 @@ LOCAL_API_HEADER = "X-Lab-Local-Api-Token"
 LOCAL_API_BOOTSTRAP_TOKEN = secrets.token_urlsafe(32)
 CONFIG_ENCRYPTION_ALGORITHM = "aes-256-gcm"
 QUESTION_BANK_SYNC_ALGORITHM = "aes-256-gcm"
+DEFAULT_BANNED_MESSAGE = "您的客户端授权已停用，请联系管理员。"
 browser_warmup_lock = threading.Lock()
 browser_warmup_state = {
     "state": "pending",
@@ -3214,9 +3215,11 @@ def handle_messages():
             return jsonify({"success": False, "message": conflict_msg, "duplicate_id": True})
         elif resp.get("banned"):
             # 被封禁了
-            print(f"[心跳] 已被封禁: {resp.get('reason')}")
+            reason = (resp.get("reason") or "").strip() or DEFAULT_BANNED_MESSAGE
+            print(f"[心跳] 已被封禁: {reason}")
+            _set_hub_state("banned", reason, reason)
             return jsonify(
-                {"success": False, "banned": True, "reason": resp.get("reason")}
+                {"success": False, "banned": True, "reason": reason}
             )
         return jsonify({"success": True, "data": cached_messages, "deleted_broadcasts": []})
 
@@ -3266,10 +3269,10 @@ def start_bootstrap():
                 resp = hub_request("POST", "/api/client/register", register_payload)
 
                 if resp.get("banned"):
-                    reason = resp.get("reason") or "已被封禁"
+                    reason = (resp.get("reason") or "").strip() or DEFAULT_BANNED_MESSAGE
                     logger.error(f"[注册] 失败: {reason}")
                     _write_start_error(f"[注册] 失败: {reason}")
-                    _set_hub_state("banned", "已被服务端禁用", reason)
+                    _set_hub_state("banned", reason, reason)
                     return
                 if resp.get("duplicate_id"):
                     reason = resp.get("message") or "设备ID异常"
@@ -3345,9 +3348,9 @@ def start_bootstrap():
                                 )
                                 _set_hub_state("ready", "就绪")
                             elif resp.get("banned"):
-                                reason = resp.get("reason") or "已被封禁"
+                                reason = (resp.get("reason") or "").strip() or DEFAULT_BANNED_MESSAGE
                                 logger.error(f"[心跳] 已被封禁: {reason}")
-                                _set_hub_state("banned", "已被服务端禁用", reason)
+                                _set_hub_state("banned", reason, reason)
                                 break
                             elif resp.get("duplicate_id"):
                                 reason = resp.get("message") or "设备ID异常"
@@ -3387,7 +3390,12 @@ def _require_ready():
     if hub_state.get("state") == "device_id_conflict":
         return False, "服务暂不可用，请联系管理员（设备ID异常）"
     if hub_state.get("state") == "banned":
-        return False, "服务暂不可用，请联系管理员"
+        ban_message = (
+            (hub_state.get("last_error") or "").strip()
+            or (hub_state.get("message") or "").strip()
+            or DEFAULT_BANNED_MESSAGE
+        )
+        return False, ban_message
     if hub_state.get("state") == "connecting":
         return False, SERVICE_LOADING_MESSAGE
     if _decrypted_config is None or _config_key is None:
